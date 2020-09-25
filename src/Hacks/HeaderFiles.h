@@ -11,12 +11,15 @@
 #include "../hooker.h"
 #include "../Hooks/hooks.h"
 
+#include "../SDK/CViewRender.h"
 #include "../SDK/IInputSystem.h"
 #include "../SDK/IGameEvent.h"
 #include "../SDK/definitions.h"
 #include "../SDK/vector.h"
 #include "../SDK/IEngineTrace.h"
 #include "../SDK/IClientEntity.h"
+#include "../SDK/bitbuf.h"
+
 
 #include <stdio.h>
 #include <string>

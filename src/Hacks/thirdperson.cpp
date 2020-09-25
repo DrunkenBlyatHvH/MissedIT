@@ -1,5 +1,5 @@
 #include "thirdperson.h"
-#include "antiaim.h"
+#include "AntiAim/antiaim.h"
 
 #include "../settings.h"
 #include "../interfaces.h"
@@ -18,6 +18,7 @@ void ThirdPerson::OverrideView(CViewSetup *pSetup)
 	if (activeWeapon && activeWeapon->GetCSWpnData() && activeWeapon->GetCSWpnData()->GetWeaponType() == CSWeaponType::WEAPONTYPE_GRENADE)
 	{
 		input->m_fCameraInThirdPerson = false;
+		Settings::ThirdPerson::toggled = false;
 		return;
 	}
 
