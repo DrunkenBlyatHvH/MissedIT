@@ -1,6 +1,8 @@
 #include "predictionsystem.h"
 
 #include "../interfaces.h"
+#include "../Hooks/hooks.h"
+#include "AimBot/ragebot.hpp"
 
 float m_flOldCurtime;
 float m_flOldFrametime;

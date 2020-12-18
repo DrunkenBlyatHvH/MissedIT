@@ -6,53 +6,20 @@
 
 #include "../Tabs/legitbottab.h"
 #include "../Tabs/ragebottab.h"
-#include "../Tabs/antiaimtab.h"
+#include "../Tabs/antiaimtab.hpp"
 #include "../Tabs/misctab.h"
 #include "../Tabs/triggerbottab.h"
-#include "../Tabs/visualstab.h"
+#include "../Tabs/visualstab.hpp"
 #include "../Tabs/skinstab.h"
 #include "../Tabs/modelstab.h"
 #include "../Tabs/skinsandmodel.h"
+#include "../Tabs/Colors.hpp"
+#include "../Tabs/other.hpp"
 
 #include "colors.h"
 #include "configs.h"
 
 bool Main::showWindow = true;
-
-static void Buttons()
-{
-	ImVec2 size =  ImGui::GetWindowSize();
-	size = ImVec2( (size.x - Settings::UI::Windows::Main::sizeX)/ 2, (size.y - Settings::UI::Windows::Main::sizeY) / 2);
-	
-	ImGui::SetNextWindowPos(ImVec2(0, (ImGui::GetWindowSize().y / 2) - 20), ImGuiCond_Once);
-	ImGui::SetNextWindowSize(ImVec2(size.x - 20,30), ImGuiCond_Once );
-
-	ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = ImVec4(0,0,0,0);
-
-	ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(
-						Settings::UI::mainColor.Color().Value.x ,
-						Settings::UI::mainColor.Color().Value.y ,
-						Settings::UI::mainColor.Color().Value.z ,
-						Settings::UI::mainColor.Color().Value.w
-				);
-
-	if (ImGui::Begin(XORSTR("##BUTTONS"), &Main::showWindow, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoTitleBar | ImGuiConfigFlags_NoMouseCursorChange ) )
-	{
-		ImGui::Columns(1);
-		{			
-			ImGui::PushItemWidth(-1);
-			if (ImGui::Button(XORSTR("Config"), ImVec2( ImGui::GetWindowSize().x, 50) ) )
-				Configs::showWindow = !Configs::showWindow;
-
-			ImGui::PopItemWidth();
-		}
-	}
-	ImGui::End();
-
-	ImGui::GetStyle().Colors[ImGuiCol_Button] = Settings::UI::accentColor.Color();
-	ImGui::GetStyle().Colors[ImGuiCol_WindowBg] = Settings::UI::bodyColor.Color();
-
-}
 
 void Main::RenderWindow()
 {
@@ -93,39 +60,41 @@ void Main::RenderWindow()
 		const char* tabs[] = {
 				"Legit Bot",
 				"Rage Bot",
+				"Trigger Bot",
 				"Anti Aim",
 				"Visuals",
+				"Colors",
 				"Skin/Model",
-				"Misc",	
+				"Misc",
+				"Others",
+				"Config",
 		};
 
 		ImGui::Columns(2, nullptr, false);
 		{
 			float ButtonsXSize = ImGui::GetWindowSize().x / IM_ARRAYSIZE(tabs)-9;
-			ImGui::SetColumnOffset(1, ButtonsXSize);
-			for (int i = 0; i < IM_ARRAYSIZE(tabs); i++)
+			ImGui::SetColumnOffset(1, ButtonsXSize); 
+			for (int i = 0; i < 10; i++)
 			{
 				int distance = i == page ? 0 : i > page ? i - page : page - i;
-
-				ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(
-					Settings::UI::mainColor.Color().Value.x - (distance * 0.035f),
-					Settings::UI::mainColor.Color().Value.y - (distance * 0.035f),
-					Settings::UI::mainColor.Color().Value.z - (distance * 0.035f),
-					Settings::UI::mainColor.Color().Value.w
-				);
-
+				
+				if (i <= 5){
+					ImGui::GetStyle().Colors[ImGuiCol_Button] = ImVec4(
+						Settings::UI::mainColor.Color().Value.x - (distance * 0.035f),
+						Settings::UI::mainColor.Color().Value.y - (distance * 0.035f),
+						Settings::UI::mainColor.Color().Value.z - (distance * 0.035f),
+						Settings::UI::mainColor.Color().Value.w
+					);
+				}
+				
+				ImGui::Spacing();
 				if (ImGui::Button(tabs[i], ImVec2( ButtonsXSize, 0)))
 					page = i;
 
-				ImGui::GetStyle().Colors[ImGuiCol_Button] = Settings::UI::accentColor.Color();
-
-				// if (i < IM_ARRAYSIZE(tabs) - 1)
-				// {
-				// 	ImGui::SameLine();
-				// 	ImGui::Dummy(ImVec2(-1,-1));
-				// }
+				if (i == 5) ImGui::Dummy(ImVec2(-1,80));
+				ImGui::GetStyle().Colors[ImGuiCol_Button] =Settings::UI::mainColor.Color().Value;
 				
-		}
+			}
 		}
 		ImGui::NextColumn();
 		{
@@ -140,19 +109,28 @@ void Main::RenderWindow()
 					RagebotTab::RenderTab();
 					break;
 				case 2:
-					HvH::RenderTab();
+					Triggerbot::RenderTab();
 					break;
 				case 3:
-					Visuals::RenderTab();
+					HvH::RenderTab();
 					break;
 				case 4:
+					Visuals::RenderTab();
+					break;
+				case 5:
+					Colors::RenderTab();
+					break;
+				case 6:
 					SkinsAndModel::RenderTab();
 					break;
-				// case 5:
-				// 	Models::RenderTab();
-				// 	break;
-				case 5:
+				case 7:
 					Misc::RenderTab();
+					break;
+				case 8:
+					Other::Render();
+					break;
+				case 9:
+					Configs::RenderTab();
 					break;
 				}
 			}
@@ -161,6 +139,4 @@ void Main::RenderWindow()
 		ImGui::EndColumns();
 		ImGui::End();
 	}
-	
-	Buttons();
 }

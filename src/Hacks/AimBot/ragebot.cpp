@@ -1,36 +1,217 @@
 // #pragma GCC diagnostic ignored "-Wcomment"
 // #pragma GCC diagnostic ignored "-Warray-bounds"
 
-#include "ragebot.h"
-#include "../AntiAim/resolver.h"
+#include <cstdlib>
+#include <ctime>
+
+#include "ragebot.hpp"
+#include "resolver.h"
+// #include "../../hooker.cpp"
+#include "../AntiAim/fakelag.h"
+#include "../esp.h"
+#include "aimbot.hpp"
 
 #define absolute(x) ( x = x < 0 ? x * -1 : x)
-#define RandomeFloat(x) (static_cast<double>( static_cast<double>(std::rand())/ static_cast<double>(RAND_MAX/x)))
+#define RandomeFloat(x) (static_cast<float>( static_cast<float>(std::rand())/ static_cast<float>(RAND_MAX/x)))
 #define NormalizeNo(x) (x = (x < 0) ? ( x * -1) : x )
 
-std::vector<int64_t> Ragebot::friends = {};
-std::vector<long> RagebotkillTimes = { 0 }; // the Epoch time from when we kill someone
+#define TICK_INTERVAL			(globalVars->interval_per_tick)
+#define TIME_TO_TICKS( dt )		( (int)( 0.5f + (float)(dt) / TICK_INTERVAL ) )
+#define TICKS_TO_TIME( t )		( TICK_INTERVAL *( t ) )
+
 QAngle RCSLastPunch;
 
-void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& playerHelth, int& i,const std::unordered_map<int, int>* modelType, const RageWeapon_t& currentSetting)
+void Ragebot::BestHeadPoint(C_BasePlayer* player, const int &BoneIndex,int& Damage, Vector& Spot)
 {
-	if (!player || !player->GetAlive() || !currentSetting.desireBones[i])
+	matrix3x4_t matrix[128];
+
+	if( !player->SetupBones(matrix, 128, 0x100, 0.f) )
+		return;
+	model_t *pModel = player->GetModel();
+	if( !pModel )
 		return;
 
-	static auto HitboxHead([&](int BoneID){
+	studiohdr_t *hdr = modelInfo->GetStudioModel(pModel);
+	if( !hdr )
+		return;
+	mstudiobbox_t *bbox = hdr->pHitbox(BoneIndex, 0);
+	if( !bbox )
+		return;
+
+	Vector mins, maxs;
+	Math::VectorTransform(bbox->bbmin, matrix[bbox->bone], mins);
+	Math::VectorTransform(bbox->bbmax, matrix[bbox->bone], maxs);
+
+	Vector center = ( mins + maxs ) * 0.5f;
+	Vector points[11] ={ 
+							center, center, center, center, 
+							center, center, center, center, 
+							center,center,center
+						};
+	// 0 - center, 1 - forehead, 2 - skullcap, 3 - upperleftear, 4 - upperrightear, 5 - uppernose, 6 - upperbackofhead
+	// 7 - leftear, 8 - rightear, 9 - nose, 10 - backofhead
+
+	points[1].z += bbox->radius * 0.60f; // morph each point.
+	points[2].z += bbox->radius * 1.25f; // ...
+	points[3].x += bbox->radius * 0.80f;
+	points[3].z += bbox->radius * 0.60f;
+	points[4].x -= bbox->radius * 0.80f;
+	points[4].z += bbox->radius * 0.90f;
+	points[5].y += bbox->radius * 0.80f;
+	points[5].z += bbox->radius * 0.90f;
+	points[6].y -= bbox->radius * 0.80f;
+	points[6].z += bbox->radius * 0.90f;
+	points[7].x += bbox->radius * 0.80f;
+	points[8].x -= bbox->radius * 0.80f;
+	points[9].y += bbox->radius * 0.80f;
+	points[10].y -= bbox->radius * 0.80f;
+
+	for (int i = 0; i < 11; i++)
+	{
+		int bestDamage = AutoWall::GetDamage(points[i], true);
+		if (bestDamage >= player->GetHealth())
+		{
+			Damage = bestDamage;
+			Spot = points[i];
+			return;
+		}
+		else if (bestDamage > Damage)
+		{
+		 	Damage = bestDamage;
+			Spot = points[i];
+		}
+	}
+}
+
+void Ragebot::BestMultiPoint(C_BasePlayer* player,const int &BoneIndex,int& Damage, Vector& Spot)
+{
+	model_t* pModel = player->GetModel();
+    if (!pModel)
+		return;
+    studiohdr_t* hdr = modelInfo->GetStudioModel(pModel);
+    if (!hdr)
+		 return;
+	mstudiobbox_t* bbox = hdr->pHitbox(BoneIndex, 0);
+	if (!bbox)
+		return;
+	
+	matrix3x4_t matrix[128];
+	Vector mins, maxs;
+	Math::VectorTransform(bbox->bbmin, matrix[bbox->bone], mins);
+	Math::VectorTransform(bbox->bbmax, matrix[bbox->bone], maxs);
+	// 0 - center 1 - left, 2 - right, 3 - back
+	Vector center = ( mins + maxs ) * 0.5f;
+	Vector points[4] = { center,center,center,center };
+
+    points[1].x += bbox->radius * 0.95f; // morph each point.
+	points[2].x -= bbox->radius * 0.95f;
+	points[3].y -= bbox->radius * 0.95f;
+
+	for (int i = 0; i < 4; i++)
+	{
+		int bestDamage = AutoWall::GetDamage(points[i], true);
+		if (bestDamage >= player->GetHealth())
+		{
+			Damage = bestDamage;
+			Spot = points[i];
+			return;
+		}
+		else if (bestDamage > Damage)
+		{   
+			Damage = bestDamage;
+			Spot = points[i];
+		}
+	}
+}
+
+bool Ragebot::canShoot(C_BaseCombatWeapon* activeWeapon,Vector &bestSpot, C_BasePlayer* enemy,const RageWeapon_t& currentSettings)
+{
+	if (currentSettings.HitChance == 0)
+		return false;
+	if (!enemy || !enemy->GetAlive())
+		return false;
+
+    Vector src = localplayer->GetEyePosition();
+    QAngle angle = Math::CalcAngle(src, bestSpot);
+    Math::NormalizeAngles(angle);
+
+	Vector forward, right, up;
+    Math::AngleVectors(angle, &forward, &right, &up);
+
+    static int hitCount;
+	hitCount = 0;
+    int NeededHits = static_cast<int>(2.56f * currentSettings.HitChance); // 256/100 = 2.56
+
+    activeWeapon->UpdateAccuracyPenalty();
+    float weap_spread = activeWeapon->GetSpread();
+    float weap_inaccuracy = activeWeapon->GetInaccuracy();
+
+
+	static double val1 = (2.0 * M_PI);
+    for (int i = 0; i < 256; i++) {
+
+		srand((unsigned int)time(NULL));
+		
+		double b = RandomeFloat(val1);
+        double spread = weap_spread * RandomeFloat(1.0f);
+        double d = RandomeFloat(1.0f);
+        double inaccuracy = weap_inaccuracy * RandomeFloat(1.0f);
+
+        Vector spreadView((cos(b) * inaccuracy) + (cos(d) * spread), (sin(b) * inaccuracy) + (sin(d) * spread), 0), direction;
+
+       	direction.x = forward.x + (spreadView.x * right.x) + (spreadView.y * up.x);
+		direction.y = forward.y + (spreadView.x * right.y) + (spreadView.y * up.y);
+		direction.z = forward.z + (spreadView.x * right.z) + (spreadView.y * up.z);
+		direction.Normalize();
+        	
+		static QAngle viewAnglesSpread;
+        Math::VectorAngles(direction, up, viewAnglesSpread);
+		Math::NormalizeAngles(viewAnglesSpread);
+
+		static Vector viewForward;
+		Math::AngleVectors(viewAnglesSpread, viewForward);
+		viewForward.NormalizeInPlace();
+
+		viewForward = src + (viewForward * activeWeapon->GetCSWpnData()->GetRange());
+
+        trace_t tr;
+        Ray_t ray;
+
+       	ray.Init(src, viewForward);
+        trace->ClipRayToEntity(ray, MASK_SHOT | CONTENTS_GRATE, enemy, &tr);
+
+        if (tr.m_pEntityHit == enemy)
+           	hitCount++;
+
+        if (static_cast<int>((hitCount/2.56f)) >= currentSettings.HitChance) // 100/256 = 0.390625
+			return true;
+
+		if ((256 - i + hitCount) < NeededHits)
+			return false;
+    }
+
+    return false;
+}
+
+void Ragebot::GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, const int& playerHelth,int& i,const std::unordered_map<int, int>* modelType)
+{	
+
+	static auto HitboxHead([&](int &BoneID){
 		Spot = player->GetBonePosition(BoneID);
-		Ragebot::ragebotPredictionSystem->BestHeadPoint(player, BoneID, Damage, Spot);
-		// BestMultiPointHEADDamage(player, BoneID, Damage, Spot);
+		BestHeadPoint(player, BoneID, Damage, Spot);
 	});
-	static auto UpperSpine([&](int BoneID){
+	static auto UpperSpine([&](int &BoneID){
 
 		Spot = player->GetBonePosition(BoneID);
-		Ragebot::ragebotPredictionSystem->BestMultiPoint(player, BoneID, Damage, Spot);
-		// BestMultiPointDamage(player, BoneID, Damage, Spot);
-		if (Damage >= 80 || Damage >= playerHelth)
+		Damage = AutoWall::GetDamage(Spot, true);
+		BestMultiPoint(player, BoneID, Damage, Spot);
+
+		if (Damage >= playerHelth)
 			return;
 			
-		static const int BONE[] = {	BONE_LEFT_COLLARBONE, 
+		static const int BONE[] = 
+								{	
+									BONE_LEFT_COLLARBONE, 
 									BONE_RIGHT_COLLARBONE,
 									BONE_LEFT_SHOULDER, 
 									BONE_RIGHT_SHOULDER
@@ -40,29 +221,28 @@ void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& pla
 		{
 			BoneID = (*modelType).at(j);
 			Vector bone3D = player->GetBonePosition(BoneID);
-			
 			int bestDamage = AutoWall::GetDamage(bone3D, true);
+			
 			if (bestDamage >= playerHelth)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 				return;
 			}
-			if (bestDamage >= Damage)
+			if (bestDamage >= Damage && bestDamage >= currentWeaponSetting->MinDamage)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 			}
-			if (bestDamage >= 70)
-				return;
 		}
 	});
-	static auto MiddleSpine([&](int BoneID){
+	static auto MiddleSpine([&](int &BoneID){
 
 		Spot = player->GetBonePosition(BoneID);
-		Ragebot::ragebotPredictionSystem->BestMultiPoint(player, BoneID, Damage, Spot);
+		Damage = AutoWall::GetDamage(Spot, true);
+		BestMultiPoint(player, BoneID, Damage, Spot);
 		// BestMultiPointDamage(player, BoneID, Damage, Spot);
-		if (Damage >= 80 || Damage >= playerHelth)
+		if (Damage >= playerHelth)
 			return;
 			
 		static const int BONE[] = {
@@ -70,8 +250,9 @@ void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& pla
     								BONE_RIGHT_ARMPIT,
 									BONE_LEFT_BICEP,
     								BONE_RIGHT_BICEP,
+									/*
 									BONE_LEFT_ELBOW,
-    								BONE_RIGHT_ELBOW
+    								BONE_RIGHT_ELBOW*/
 								};
 		
 		for (auto &j : BONE)
@@ -86,21 +267,20 @@ void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& pla
 				Spot = bone3D;
 				return;
 			}
-			else if (bestDamage >= Damage)
+			else if (bestDamage >= Damage && bestDamage >= currentWeaponSetting->MinDamage)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 			}
-			else if (bestDamage >= 70)
-				return;
 		}
 	});
-	static auto LowerSpine([&](int BoneID){
+	static auto LowerSpine([&](int &BoneID){
 
 		Spot = player->GetBonePosition(BoneID);
-		Ragebot::ragebotPredictionSystem->BestMultiPoint(player, BoneID, Damage, Spot);
+		Damage = AutoWall::GetDamage(Spot, true);
+		BestMultiPoint(player, BoneID, Damage, Spot);
 		// BestMultiPointDamage(player, BoneID, Damage, Spot);
-		if (Damage >= 80 || Damage >= playerHelth)
+		if (Damage >= playerHelth)
 			return;
 			
 		static const int BONE[] = {	
@@ -114,32 +294,32 @@ void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& pla
 		{
 			BoneID = (*modelType).at(j);
 			Vector bone3D = player->GetBonePosition(BoneID);
-			
 			int bestDamage = AutoWall::GetDamage(bone3D, true);
+
 			if (bestDamage >= playerHelth)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 				return;
 			}
-			if (bestDamage >= Damage)
+			if (bestDamage >= Damage && bestDamage >= currentWeaponSetting->MinDamage)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 			}
-			if (bestDamage >= 70)
-				return;
 		}
 	});
-	static auto HipHitbox([&](int BoneID){
-
+	static auto HipHitbox([&](int &BoneID){
 		Spot = player->GetBonePosition(BoneID);
-		Ragebot::ragebotPredictionSystem->BestMultiPoint(player, BoneID, Damage, Spot);
-		// BestMultiPointDamage(player, BoneID, Damage, Spot);
-		if (Damage >= 40 || Damage >= playerHelth)
+		Damage = AutoWall::GetDamage(Spot, true);
+		BestMultiPoint(player, BoneID, Damage, Spot);
+
+		if (Damage >= playerHelth)
 			return;
 			
-		static const int BONE[] = {BONE_LEFT_BUTTCHEEK,
+		static const int BONE[] = 
+								{
+									BONE_LEFT_BUTTCHEEK,
     								BONE_LEFT_THIGH,
     								BONE_RIGHT_BUTTCHEEK,
     								BONE_RIGHT_THIGH,
@@ -149,62 +329,57 @@ void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& pla
 		{
 			BoneID = (*modelType).at(j);
 			Vector bone3D = player->GetBonePosition(BoneID);
-			
 			int bestDamage = AutoWall::GetDamage(bone3D, true);
+
 			if (bestDamage >= playerHelth)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 				return;
 			}
-			if (bestDamage >= Damage)
+			if (bestDamage >= Damage && bestDamage >= currentWeaponSetting->MinDamage)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 			}
-			if (bestDamage >= 70)
-				return;
 		}
 	});
-	static auto PelvisHitbox([&](int BoneID){
+	static auto PelvisHitbox([&](int &BoneID){
 
 		Spot = player->GetBonePosition(BoneID);
-		Ragebot::ragebotPredictionSystem->BestMultiPoint(player, BoneID, Damage, Spot);
-		// BestMultiPointDamage(player, BoneID, Damage, Spot);
-		if (Damage >= 40 || Damage >= playerHelth)
+		Damage = AutoWall::GetDamage(Spot, true);
+		BestMultiPoint(player, BoneID, Damage, Spot);
+		if (Damage >= playerHelth)
 			return;
 			
-		static const int BONE[] = {BONE_LEFT_KNEE, 
+		static const int BONE[] = 
+								{
+									BONE_LEFT_KNEE, 
 									BONE_LEFT_ANKLE,
-									BONE_LEFT_SOLE, 
-									BONE_RIGHT_BUTTCHEEK,
-									BONE_RIGHT_THIGH,
 									BONE_RIGHT_KNEE,
 									BONE_RIGHT_ANKLE,
-									BONE_RIGHT_SOLE};
+								};
 		
 		for (auto &j : BONE)
 		{
 			BoneID = (*modelType).at(j);
-			Vector bone3D = player->GetBonePosition(BoneID);
-			
+			Vector bone3D = player->GetBonePosition(BoneID);		
 			int bestDamage = AutoWall::GetDamage(bone3D, true);
+
 			if (bestDamage >= playerHelth)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 				return;
 			}
-			if (bestDamage >= Damage)
+			if (bestDamage >= Damage && bestDamage >= currentWeaponSetting->MinDamage)
 			{
 				Damage = bestDamage;
 				Spot = bone3D;
 			}
-			if (bestDamage >= 70)
-				return;
 		}
 	});
-	static auto DefaultHitbox([&](int BoneID){
+	static auto DefaultHitbox([&](int &BoneID){
 		Spot = player->GetBonePosition(BoneID);
 		Damage = AutoWall::GetDamage(Spot, true);
 	});
@@ -215,431 +390,333 @@ void GetDamageAndSpots(C_BasePlayer* player, Vector &Spot, int& Damage, int& pla
 	{
 		case DesireBones::BONE_HEAD:
 			boneID = (*modelType).at(BONE_HEAD);
-			if ( playerHelth <= 85  ) 
-				boneID = (*modelType).at(BONE_NECK);
-			if (currentSetting.desiredMultiBones[i]) 
-				HitboxHead(boneID); // lamda expression because again creating a new method is going to make the source code mess :p
-			else 
-				DefaultHitbox(boneID);
-			break;
+			if (currentWeaponSetting->desiredMultiBones[i]) HitboxHead(boneID); // lamda expression because again creating a new method is going to make the source code mess :p
+			else DefaultHitbox(boneID);
+		break;
 		
 		case DesireBones::UPPER_CHEST:
 			boneID = (*modelType).at(BONE_UPPER_SPINAL_COLUMN);
-			if (currentSetting.desiredMultiBones[i]) 
-				UpperSpine(boneID);
-			else 
-				DefaultHitbox(boneID);
-			break;
+			if (currentWeaponSetting->desiredMultiBones[i]) UpperSpine(boneID);
+			else DefaultHitbox(boneID);
+		break;
 			
 		case DesireBones::MIDDLE_CHEST:
 			boneID = (*modelType).at(BONE_MIDDLE_SPINAL_COLUMN);
-			if (currentSetting.desiredMultiBones[i]) 
-				MiddleSpine(boneID);
-			else 
-				DefaultHitbox(boneID);
-			break;
+			if (currentWeaponSetting->desiredMultiBones[i]) MiddleSpine(boneID);
+			else DefaultHitbox(boneID);
+		break;
 		
 		case DesireBones::LOWER_CHEST:
 			boneID = (*modelType).at(BONE_LOWER_SPINAL_COLUMN);
-			if (currentSetting.desiredMultiBones[i]) 
-				LowerSpine(boneID);
-			else 
-				DefaultHitbox(boneID);
-			break;
+			if (currentWeaponSetting->desiredMultiBones[i]) LowerSpine(boneID);
+			else DefaultHitbox(boneID);
+		break;
 		
 		case DesireBones::BONE_HIP:
 			boneID = (*modelType).at(BONE_HIP);
-			if (currentSetting.desiredMultiBones[i]) 
-				HipHitbox(boneID);
-			else 
-				DefaultHitbox(boneID);
-			break;
+			if (currentWeaponSetting->desiredMultiBones[i]) HipHitbox(boneID);
+			else DefaultHitbox(boneID);
+		break;
 		
 		case DesireBones::LOWER_BODY:
 			boneID = BONE_PELVIS;
-			if (currentSetting.desiredMultiBones[i]) 
-				PelvisHitbox(boneID);
-			else 
-				DefaultHitbox(boneID);
-			break;
+			if (currentWeaponSetting->desiredMultiBones[i]) PelvisHitbox(boneID);
+			else DefaultHitbox(boneID);
+		break;
 	}
 }
 
-void GetBestSpotAndDamage(C_BasePlayer* player,C_BasePlayer* localplayer, Vector& Spot, int& Damage,const RageWeapon_t& currSettings)
-{	
-	if (!player || !localplayer || !player->GetAlive() || !localplayer->GetAlive())
-		return;
-		
-	// Atleast Now Total Bones we are caring of
-	Vector spot = Vector(0);
-	int damage = 0.f;
-
-	int playerHelth = player->GetHealth();
-	const std::unordered_map<int, int>* modelType = BoneMaps::GetModelTypeBoneMap(player);
-
-	// static matrix3x4_t boneMatrix[128];
-	// 	player->SetupBones(boneMatrix, 128, 0x100, 0);
-	
-	static int i;
-	for (i = 0; i < 6; i++)
-	{
-		GetDamageAndSpots(player, spot, damage, playerHelth, i, modelType, currSettings);
-		if (damage >= playerHelth)
-		{
-			Damage = damage;
-			Spot = spot;
-			return;
-		}
-		else if (damage > Damage)
-		{
-			Damage = damage;
-			Spot = spot;
-		}
-	}	
-}
-
-void RagebotNoRecoil(QAngle& angle, CUserCmd* cmd, C_BasePlayer* localplayer, C_BaseCombatWeapon* activeWeapon, const RageWeapon_t& currentSettings)
+void Ragebot::GetBestEnemy()
 {
-    if (!(cmd->buttons & IN_ATTACK) 
-		|| !localplayer
-		|| !localplayer->GetAlive())
-		return;
-	
-	if (*activeWeapon->GetItemDefinitionIndex() == ItemDefinitionIndex::WEAPON_SSG08 || *activeWeapon->GetItemDefinitionIndex() == ItemDefinitionIndex::WEAPON_AWP)
-		return;
+	static Vector bestSpot;
+	static int bestDamage;
+	bestSpot.Zero();
+	bestDamage = 0;
 
-	QAngle CurrentPunch = *localplayer->GetAimPunchAngle();
-
-	if (currentSettings.silent)
+	const int &maxClient = engine->GetMaxClients();
+	C_BasePlayer* player = nullptr;
+	static int boneIndex = 0;
+	for (int i = 1; i < maxClient; ++i)
 	{
-		angle.x -= CurrentPunch.x * 2.f;
-		angle.y -= CurrentPunch.y * 2.f;
-	}
-	else if (localplayer->GetShotsFired() > 1 )
-	{
-		QAngle NewPunch = { CurrentPunch.x - RCSLastPunch.x, CurrentPunch.y - RCSLastPunch.y, 0 };
+		player = (C_BasePlayer*) entityList->GetClientEntity(i);
 
-		angle.x -= NewPunch.x * 2.0;
-		angle.y -= NewPunch.y * 2.0;
-	}
-	RCSLastPunch = CurrentPunch;
-}
+		if (!player || 
+			i == engine->GetLocalPlayer() || 
+			player->GetDormant() || 
+			!player->GetAlive() || 
+			player->GetImmune() || 
+			player->GetTeam() == localplayer->GetTeam() )
+			continue;			
 
-void RagebotAutoCrouch(C_BasePlayer* localplayer, CUserCmd* cmd, C_BaseCombatWeapon* activeWeapon, const RageWeapon_t& currentSettings)
-{
-    if (!localplayer || !localplayer->GetAlive() || !Settings::Ragebot::AutoCrouch::enable)
-		return;
-	
-	if (activeWeapon->GetNextPrimaryAttack() > globalVars->curtime)
-		return;
-
-    cmd->buttons |= IN_DUCK;
-}
-
-void RagebotAutoSlow(C_BasePlayer* localplayer, C_BaseCombatWeapon* activeWeapon, CUserCmd* cmd, float& forrwordMove, float& sideMove, QAngle& angle, const RageWeapon_t& currentSettings)
-{
-	if (!currentSettings.autoSlow)
-		return;
-	if (!localplayer || !localplayer->GetAlive())
-		return;
-	if ( !activeWeapon || activeWeapon->GetInReload())
-		return;
-	
-	if (currentSettings.autoScopeEnabled && 
-		Util::Items::IsScopeable(*activeWeapon->GetItemDefinitionIndex()) && 
-		!localplayer->IsScoped() && 
-		!(cmd->buttons & IN_ATTACK2) && 
-		!(cmd->buttons&IN_ATTACK))
-		{ 
-			cmd->buttons |= IN_ATTACK2; 
-		}
-		
-
-	if (activeWeapon->GetNextPrimaryAttack() > globalVars->curtime ) 
-		return;
-
-	// QAngle ViewAngle;
-	// 	engine->GetViewAngles(ViewAngle);
-	// static Vector oldOrigin = localplayer->GetAbsOrigin( );
-	// Vector velocity = ( localplayer->GetVecOrigin( )-oldOrigin ) * (1.f/globalVars->interval_per_tick);
-	// oldOrigin = localplayer->GetAbsOrigin( );
-	// float speed  = velocity.Length( );
-		
-	// if(speed > 15.f)
-	// {
-	// 	QAngle dir;
-	// 	Math::VectorAngles(velocity, dir);
-	// 	dir.y = ViewAngle.y - dir.x;
-		
-	// 	Vector NewMove = Vector(0);
-	// 	Math::AngleVectors(dir, NewMove);
-	// 	auto max = std::max(forrwordMove, sideMove);
-	// 	auto mult = 450.f/max;
-	// 	NewMove *= -mult;
+		if ( currentWeaponSetting->OnShot){
+			if (currentWeaponSetting->OnShotOnKey ){
+				if ( inputSystem->IsButtonDown(Settings::Ragebot::OnShotBtn ) ){
+					if (player->GetIndex() != ShootEnemyIndex)
+						continue;
+				}
+			}else {
+				if (player->GetIndex() != ShootEnemyIndex)
+					continue;
+			}
+		}			
 			
-	// 	forrwordMove = NewMove.x;
-	// 	sideMove = NewMove.y;
-	// }
-	// else 
-	// {	
-		forrwordMove = 0.f;
-		sideMove = 0.f;
-	// }
-	
-	cmd->buttons |= IN_WALK;
-}
+		const int &playerHelth = player->GetHealth();
+		const std::unordered_map<int, int>* modelType = BoneMaps::GetModelTypeBoneMap(player);
 
-void RagebotAutoR8(C_BasePlayer* player, C_BasePlayer* localplayer, C_BaseCombatWeapon* activeWeapon, CUserCmd* cmd,Vector& bestspot, QAngle& angle, float& forrwordMove, float& sideMove, const RageWeapon_t& currentSettings)
-{
-    if (!currentSettings.autoShootEnabled)
-		return;
-	if (!localplayer || !localplayer->GetAlive())
-		return;
-	if (!activeWeapon || activeWeapon->GetInReload())
-		return;
-
-	if (*activeWeapon->GetItemDefinitionIndex() == ItemDefinitionIndex::WEAPON_REVOLVER)
-	{		
-		cmd->buttons |= IN_ATTACK;
-
-    	float postponeFireReadyTime = activeWeapon->GetPostPoneReadyTime();
-		if (player)
+		for (boneIndex = 0; boneIndex < 6; boneIndex++)
 		{
-			if ( !Ragebot::ragebotPredictionSystem->canShoot(cmd, localplayer, activeWeapon, bestspot, player, currentSettings))
+			if ( !currentWeaponSetting->desireBones[boneIndex] ) continue;
+
+			if (boneIndex == 0 && player->GetHealth() < 70)
+				boneIndex++;
+
+			GetDamageAndSpots(player, bestSpot, bestDamage, playerHelth, boneIndex, modelType);
+
+			if (bestDamage >= playerHelth)
 			{
-				RagebotAutoSlow(localplayer, activeWeapon, cmd, forrwordMove, sideMove, angle, currentSettings);
-				cmd->buttons &= ~IN_ATTACK;
+				BestDamage = bestDamage;
+				BestSpot = bestSpot;
+				enemy = player;
+				return;
+			}
+			else if ( inputSystem->IsButtonDown(Settings::Ragebot::DamageOverrideBtn) ){
+				if (currentWeaponSetting->DamageOverride > 0 && bestDamage >= currentWeaponSetting->DamageOverride && bestDamage > BestDamage ){
+					BestDamage = bestDamage;
+					BestSpot = bestSpot;
+					enemy = player;
+				}
+				
+			}
+			else if (bestDamage > BestDamage && bestDamage >= currentWeaponSetting->MinDamage)
+			{
+				BestDamage = bestDamage;
+				BestSpot = bestSpot;
+				enemy = player;
 			}
 		}
-		else if (postponeFireReadyTime < globalVars->curtime )
-			cmd->buttons &= ~IN_ATTACK;
-
-		return;
 	}
 }
 
-void RagebotAutoShoot(C_BasePlayer* player, C_BasePlayer* localplayer, C_BaseCombatWeapon* activeWeapon, CUserCmd* cmd, Vector& bestspot, QAngle& angle, float& forrwordMove, float& sideMove, const RageWeapon_t& currentSettings)
+void Ragebot::CheckHit()
+{	
+	if (!localplayer)
+		return;
+	if (!activeWeapon )
+		return;
+
+	auto traceEnd = bulPosition;
+    Ray_t ray;
+	AutoWall::FireBulletData fireBulletData;
+
+	fireBulletData.src = Ragebot::data.PrevTickEyePosition;
+    fireBulletData.filter.pSkip = localplayer;
+	CCSWeaponInfo* weaponInfo = activeWeapon->GetCSWpnData();
+	QAngle angles = Math::CalcAngle(fireBulletData.src, traceEnd);
+	Math::AngleVectors(angles, fireBulletData.direction);
+	Vector temp = fireBulletData.direction;
+    
+	fireBulletData.direction = temp.Normalize();
+	fireBulletData.trace_length_remaining = weaponInfo->GetRange();
+	fireBulletData.trace_length = 0;
+	fireBulletData.penetrate_count = 4;
+	fireBulletData.current_damage = (float) weaponInfo->GetDamage();
+
+	while ( fireBulletData.penetrate_count > 0 && fireBulletData.current_damage >= 1.0f)
+	{
+		cvar->ConsoleColorPrintf(ColorRGBA(254, 0, 0, 255), XORSTR("round \n"));
+		fireBulletData.trace_length_remaining = weaponInfo->GetRange() - fireBulletData.trace_length;
+		Vector end = fireBulletData.src + fireBulletData.direction * fireBulletData.trace_length_remaining;
+		
+		ray.Init(fireBulletData.src, end + fireBulletData.direction * 40.f);
+		trace->TraceRay(ray, MASK_SHOT, &fireBulletData.filter, &fireBulletData.enter_trace);
+		
+		if (fireBulletData.enter_trace.hitgroup < HitGroups::HITGROUP_GEAR && fireBulletData.enter_trace.hitgroup > HitGroups::HITGROUP_GENERIC)
+		{
+			cvar->ConsoleColorPrintf(ColorRGBA(254, 0, 0, 255), XORSTR("Hit something\n"));
+			// cvar->ConsoleColorPrintf(ColorRGBA(254, 0, 0, 255), XORSTR("IHit Babe\n"));
+			Ragebot::data.Hited = true;
+			return;
+		}
+
+		if (!AutoWall::HandleBulletPenetration(weaponInfo, fireBulletData))
+			break;
+	}
+    
+	cvar->ConsoleColorPrintf(ColorRGBA(254, 0, 0, 255), XORSTR("Trace Compleate\n"));
+}
+
+void Ragebot::init(C_BasePlayer* _localplayer, C_BaseCombatWeapon* _activeWeapon)
 {
-    if (!currentSettings.autoShootEnabled)
+	localplayer = _localplayer;
+	activeWeapon = _activeWeapon;
+	enemy = nullptr;
+}
+
+void Ragebot::AutoShoot(C_BasePlayer* player, C_BasePlayer* localplayer, C_BaseCombatWeapon* activeWeapon, CUserCmd* cmd, Vector& bestspot, QAngle& angle, RageWeapon_t* currentSettings)
+{
+    if (!currentSettings->autoShootEnabled)
 		return;
 	if (!activeWeapon || activeWeapon->GetInReload() || activeWeapon->GetAmmo() == 0)
 		return;
     CSWeaponType weaponType = activeWeapon->GetCSWpnData()->GetWeaponType();
     if (weaponType == CSWeaponType::WEAPONTYPE_KNIFE || weaponType == CSWeaponType::WEAPONTYPE_C4 || weaponType == CSWeaponType::WEAPONTYPE_GRENADE)
 		return;
-	if (*activeWeapon->GetItemDefinitionIndex() == ItemDefinitionIndex::WEAPON_REVOLVER)
-		return;
-		
-	if ( Ragebot::ragebotPredictionSystem->canShoot(cmd, localplayer, activeWeapon, bestspot, player, currentSettings) )
+	
+	if (currentSettings->autoScopeEnabled && Util::Items::IsScopeable(*activeWeapon->GetItemDefinitionIndex()) && !localplayer->IsScoped() && !(cmd->buttons & IN_ATTACK2) && !(cmd->buttons&IN_ATTACK)){ 
+		cmd->buttons |= IN_ATTACK2; 
+	}
+
+	bool canShoot;
+	canShoot = false;
+	if (currentSettings->hitchanceType == HitchanceType::Normal){
+		canShoot = Aimbot::canShoot(localplayer, activeWeapon, currentSettings->HitChance);
+	}else {
+		canShoot = Ragebot::canShoot(activeWeapon, bestspot, player, *currentSettings);
+	}
+	if ( canShoot )
 	{
-		if (activeWeapon->GetNextPrimaryAttack() > globalVars->curtime)
+		if (activeWeapon->GetNextPrimaryAttack() >= globalVars->curtime)
 			cmd->buttons &= ~IN_ATTACK;
 		else if ( !(cmd->buttons & IN_ATTACK) )
 			cmd->buttons |= IN_ATTACK;
+
+		Ragebot::data.autoslow = false;
+
 		return;
 	}
 
-	RagebotAutoSlow(localplayer, activeWeapon, cmd, forrwordMove, sideMove, angle, currentSettings);
-}
-
-static void FixMouseDeltas(CUserCmd* cmd, C_BasePlayer* player, QAngle& angle, QAngle& oldAngle)
-{
-    if (!player || !player->GetAlive())
-		return;
-
-    QAngle delta = angle - oldAngle;
-    const float &sens = cvar->FindVar(XORSTR("sensitivity"))->GetFloat();
-    const float &m_pitch = cvar->FindVar(XORSTR("m_pitch"))->GetFloat();
-    const float &m_yaw = cvar->FindVar(XORSTR("m_yaw"))->GetFloat();
-    const float &zoomMultiplier = cvar->FindVar("zoom_sensitivity_ratio_mouse")->GetFloat();
-
-    Math::NormalizeAngles(delta);
-
-    cmd->mousedx = -delta.y / (m_yaw * sens * zoomMultiplier);
-    cmd->mousedy = delta.x / (m_pitch * sens * zoomMultiplier);
-}
-
-C_BasePlayer* GetBestEnemyAndSpot(C_BasePlayer* localplayer,const RageWeapon_t& currSettings)
-{
-	using namespace Ragebot;
-
-	if (!localplayer || !localplayer->GetAlive())
-		return nullptr;
-	
-	Vector bestSpot = Vector(0);
-	int bestDamage = 0;
-
-	BestDamage = 0;
-	BestSpot = Vector(0);
-
-	if (lockedEnemy.player)
-	{
-		if (lockedEnemy.player->GetAlive() && !lockedEnemy.player->GetDormant() && !Ragebot::lockedEnemy.player->GetImmune())
-		{
-			GetBestSpotAndDamage(lockedEnemy.player,localplayer, bestSpot, bestDamage, currSettings);
-			if (bestDamage >= lockedEnemy.player->GetHealth() || bestDamage >= currSettings.MinDamage)
-			{
-				BestDamage = bestDamage;
-				BestSpot = bestSpot;
-				return lockedEnemy.player;
-			}
-		}
-		else 
-		{
-			lockedEnemy.player = nullptr;
-			lockedEnemy.bestDamage = 0;
-			lockedEnemy.lockedSpot = Vector(0);
-		}
-		
-	}
-	
-	C_BasePlayer* clossestEnemy = nullptr;
-	int maxClient = engine->GetMaxClients();
-	for (int i = 1; i < maxClient; ++i)
-	{
-		C_BasePlayer* player = (C_BasePlayer*) entityList->GetClientEntity(i);
-
-		if (!player || 
-			player == localplayer || 
-			player->GetDormant() || 
-			!player->GetAlive() || 
-			player->GetImmune())
-			continue;
-
-		if (Entity::IsTeamMate(player, localplayer)) // Checking for Friend If any it will continue to next player
-			continue;			
-
-		GetBestSpotAndDamage(player,localplayer, bestSpot, bestDamage, currSettings);
-		
-		if (bestDamage >= player->GetHealth() )
-		{
-			BestDamage = bestDamage;
-			BestSpot = bestSpot;
-			return player;
-		}	
-		else if (bestDamage > BestDamage){
-			BestDamage = bestDamage;
-			BestSpot = bestSpot;
-			clossestEnemy = player;
-		}
-	}	
-
-	if (BestDamage < currSettings.MinDamage || BestDamage <= 0)
-		return nullptr;
-
-	return clossestEnemy;
+	// static prevSpe
+	Aimbot::AutoSlow(localplayer, cmd, currentSettings->autoSlow);
 }
 
 void Ragebot::CreateMove(CUserCmd* cmd)
 {
-	if (!Settings::Ragebot::enabled)
-		return;
+	if (Ragebot::data.player && Ragebot::data.player->GetAlive() )
+    {
+		if (Ragebot::data.Hited && Ragebot::data.player->GetHealth() >= Ragebot::data.playerhelth){
+            cvar->ConsoleColorPrintf(ColorRGBA(255,0,0,255), XORSTR("Miss Due To Resolver\n"));
+			engine->ExecuteClientCmd("say Miss Due To Resolver");
+		    Resolver::players[Ragebot::data.player->GetIndex()].MissedCount++;
+        }
+    }
+
+	data.player = nullptr;
+	Ragebot::data.Hited = false;
+
 	C_BasePlayer* localplayer = (C_BasePlayer*)entityList->GetClientEntity(engine->GetLocalPlayer());
     if (!localplayer || !localplayer->GetAlive())
 		return;
     C_BaseCombatWeapon* activeWeapon = (C_BaseCombatWeapon*)entityList->GetClientEntityFromHandle(localplayer->GetActiveWeapon());
-    if (!activeWeapon || activeWeapon->GetInReload())
+    if (!activeWeapon || activeWeapon->GetInReload() || activeWeapon->GetAmmo() == 0)
 		return;
+
+	if (activeWeapon->GetNextPrimaryAttack() > globalVars->curtime){
+		if (cmd->buttons & IN_ATTACK)
+			cmd->buttons &= ~IN_ATTACK;
+		return;
+	}
+
+	init(localplayer, activeWeapon);
+
+	ItemDefinitionIndex index = ItemDefinitionIndex::INVALID;
+    if (Settings::Ragebot::weapons.find(*activeWeapon->GetItemDefinitionIndex()) != Settings::Ragebot::weapons.end()){
+		index = *activeWeapon->GetItemDefinitionIndex();
+	}
+	currentWeaponSetting = &Settings::Ragebot::weapons.at(index);
+
+	static QAngle oldAngle = QAngle(0);
+	static QAngle angle = QAngle(0);
+	
+	angle = cmd->viewangles;
+    engine->GetViewAngles(oldAngle);
+
     CSWeaponType weaponType = activeWeapon->GetCSWpnData()->GetWeaponType();
     if (weaponType == CSWeaponType::WEAPONTYPE_C4 || weaponType == CSWeaponType::WEAPONTYPE_GRENADE || weaponType == CSWeaponType::WEAPONTYPE_KNIFE)
 		return;
-	
-	// Cheking if our aimbot miss any shot or not basically it is not the perfect way to do this
-	// But for Now I only come up with this thing :(
-	if (lockedEnemy.shooted && lockedEnemy.player && lockedEnemy.player->GetAlive())
-	{
-		if (lockedEnemy.playerhelth == lockedEnemy.player->GetHealth() && lockedEnemy.player->GetAlive())
-			Resolver::players[Resolver::TargetID].MissedCount++;
-		
-		if (Resolver::players[Resolver::TargetID].MissedCount > 4)
-			Resolver::players[Resolver::TargetID].MissedCount = 0;
-		
-		lockedEnemy.shooted = false;
-		lockedEnemy.playerhelth = 0;
-	}
-
-	QAngle oldAngle;
-    engine->GetViewAngles(oldAngle);
-    
-	float oldForward = cmd->forwardmove;
-    float oldSideMove = cmd->sidemove;
-	QAngle angle = cmd->viewangles;
-
-	ItemDefinitionIndex index = ItemDefinitionIndex::INVALID;
-    if (Settings::Ragebot::weapons.find(*activeWeapon->GetItemDefinitionIndex()) != Settings::Ragebot::weapons.end())
-		  index = *activeWeapon->GetItemDefinitionIndex();
-    const RageWeapon_t &currentWeaponSetting = Settings::Ragebot::weapons.at(index);
-		
 
 	Ragebot::localEye = localplayer->GetEyePosition();
-    Ragebot::BestSpot = Vector(0);
-	Ragebot::BestDamage = 0;
+   	Ragebot::BestSpot.Zero();
+	Ragebot::BestDamage = (int)0;
+	ShootEnemyIndex = 0;
 
-	C_BasePlayer* player = nullptr;
-	player = GetBestEnemyAndSpot(localplayer, currentWeaponSetting);
-
-    if (player && Ragebot::BestDamage > 0)
+	Ragebot::GetBestEnemy();
+	
+    if (enemy && Ragebot::BestDamage > 0)
     {
-		Resolver::TargetID = player->GetIndex();
-		Ragebot::lockedEnemy.player = player;
-		Ragebot::lockedEnemy.lockedSpot = Ragebot::BestSpot;
-		Ragebot::lockedEnemy.bestDamage = Ragebot::BestDamage;
 		Settings::Debug::AutoAim::target = Ragebot::BestSpot;
 
-		RagebotAutoShoot(player, localplayer, activeWeapon, cmd, Ragebot::BestSpot, angle, oldForward, oldSideMove, currentWeaponSetting);
-    	RagebotAutoR8(player, localplayer, activeWeapon, cmd, Ragebot::BestSpot, angle, oldForward, oldSideMove, currentWeaponSetting);
-		RagebotAutoCrouch(player, cmd, activeWeapon, currentWeaponSetting);
-
-		// bf_write* buf;
-		// CUserCmd* from = cmd;
-		// CUserCmd* to = cmd;
-
-		// to->command_number++;
-		// to->tick_count +=  200;
-		// WriteUserCmd(buf, from, to);
+		AutoShoot(enemy, localplayer, activeWeapon, cmd, Ragebot::BestSpot, angle, currentWeaponSetting);
+		Aimbot::AutoCrouch(cmd, activeWeapon, currentWeaponSetting->AutoCroutch);
 
 		if (cmd->buttons & IN_ATTACK)
 		{
-			angle = Math::CalcAngle(Ragebot::localEye, Ragebot::BestSpot);
-			lockedEnemy.shooted = true;
-			lockedEnemy.playerhelth = lockedEnemy.player->GetHealth();
-			CreateMove::sendPacket = true;
+			Ragebot::data.player = enemy;
+			Ragebot::data.playerhelth = enemy->GetHealth();
+			Ragebot::data.PrevTickEyePosition = Ragebot::localEye;
+			Ragebot::data.shooted = true;
+			if (Settings::AntiAim::InvertOnShoot) { Settings::AntiAim::inverted = !Settings::AntiAim::inverted; }
+			Aimbot::VelocityExtrapolate(enemy, Ragebot::BestSpot);
+			Math::CalcAngle(Ragebot::localEye, Ragebot::BestSpot, angle);
+			cmd->sidemove = cmd->forwardmove = 0;
 		}
-			
     }
-	else{
-		Ragebot::lockedEnemy.player = nullptr;
-		Ragebot::lockedEnemy.lockedSpot = Vector(0);
-		Ragebot::lockedEnemy.bestDamage = 0;
-	}
 	
-	RagebotNoRecoil(angle, cmd, localplayer, activeWeapon, currentWeaponSetting);
-	
-    Math::NormalizeAngles(angle);
+	Aimbot::AutoR8(enemy, activeWeapon, cmd, currentWeaponSetting->autoShootEnabled);
+	Aimbot::NoRecoil(angle, cmd, localplayer, activeWeapon, currentWeaponSetting->silent);
+	Aimbot::AutoPistol(activeWeapon, cmd, currentWeaponSetting->autoPistolEnabled);
+
+	Math::NormalizeAngles(angle);
 	Math::ClampAngles(angle);
 
-    FixMouseDeltas(cmd, player, angle, oldAngle);
+    Aimbot::FixMouseDeltas(cmd, angle, oldAngle);
+
     cmd->viewangles = angle;
 
-	if (!currentWeaponSetting.silent)
-		engine->SetViewAngles(cmd->viewangles);
+	if (cmd->buttons & IN_ATTACK){
+		CreateMove::sendPacket = true;
+		if (!currentWeaponSetting->silent)
+			engine->SetViewAngles(angle);
+	}
 
-	Math::CorrectMovement(oldAngle, cmd, oldForward, oldSideMove);
 }
 
 void Ragebot::FireGameEvent(IGameEvent* event)
 {
 	if(!event)	
 		return;
+	
+	if ( strcmp(event->GetName(), XORSTR("bullet_impact")) == 0){
+		int UserID = engine->GetPlayerForUserID(event->GetInt(XORSTR("userid")));
+		if (  UserID == engine->GetLocalPlayer() ) {
+			if (!Ragebot::data.shooted)
+				return;
+			else
+				Ragebot::data.shooted = false;
 
-    if (strcmp(event->GetName(), XORSTR("player_connect_full")) == 0 || strcmp(event->GetName(), XORSTR("cs_game_disconnected")) == 0)
+			const float x = event->GetFloat(XORSTR("x")), 
+						y = event->GetFloat(XORSTR("y")), 
+						z = event->GetFloat(XORSTR("z"));
+			bulPosition.Init(x, y, z);
+			Ragebot::CheckHit();
+		}else {
+			ShootEnemyIndex = UserID;
+		}
+	}    
+}
+
+void Ragebot::FireGameEvent2(IGameEvent* event)
+{
+	if ( strcmp(event->GetName(), XORSTR("bullet_impact")) == 0 ){
+		const float x = event->GetFloat(XORSTR("x")), 
+					y = event->GetFloat(XORSTR("y")), 
+					z = event->GetFloat(XORSTR("z"));
+
+		ESP::bulletBeam.bulletPosition.push_front(Vector(x,y,z));
+		ESP::bulletBeam.enemyIndex = engine->GetPlayerForUserID(event->GetInt(XORSTR("userid")));
+	}
+	if (strcmp(event->GetName(), XORSTR("player_death")) == 0)
     {
-		if (event->GetInt(XORSTR("userid")) && engine->GetPlayerForUserID(event->GetInt(XORSTR("userid"))) != engine->GetLocalPlayer())
-	    	return;
-		Ragebot::friends.clear();
-    }
-    if (strcmp(event->GetName(), XORSTR("player_death")) == 0)
-    {
+		// cvar->ConsoleColorPrintf(ColorRGBA(255,200,156,255), XORSTR("player_death\n"));
 		int attacker_id = engine->GetPlayerForUserID(event->GetInt(XORSTR("attacker")));
 		int deadPlayer_id = engine->GetPlayerForUserID(event->GetInt(XORSTR("userid")));
 
@@ -648,7 +725,10 @@ void Ragebot::FireGameEvent(IGameEvent* event)
 
 		if (attacker_id != engine->GetLocalPlayer())
 	    	return;
-
-		RagebotkillTimes.push_back(Util::GetEpochTime());
+		// else the player we shoot is dead better to set it to 0
+    }else if (strcmp(event->GetName(), XORSTR("player_connect_full")) == 0 || strcmp(event->GetName(), XORSTR("cs_game_disconnected")) == 0)
+    {
+		if (event->GetInt(XORSTR("userid")) && engine->GetPlayerForUserID(event->GetInt(XORSTR("userid"))) != engine->GetLocalPlayer())
+	    	return;
     }
 }

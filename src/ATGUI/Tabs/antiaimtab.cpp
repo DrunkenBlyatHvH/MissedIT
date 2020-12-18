@@ -1,7 +1,7 @@
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 #pragma GCC diagnostic ignored "-Wformat-security"
 
-#include "antiaimtab.h"
+#include "antiaimtab.hpp"
 
 #include "../../interfaces.h"
 #include "../../Utils/xorstring.h"
@@ -9,210 +9,208 @@
 #include "../../Hacks/valvedscheck.h"
 #include "../../ImGUI/imgui_internal.h"
 #include "../atgui.h"
+#include "../tooltip.h"
 
+#define GetPercentVal(val, percent) (val * (percent/100.f))
 
+void HvH::AntiAim(){
 
-static void RageAntiAIm()
-{
-    const char* yType[] = {
-        "NONE",
-        "Static",
-        "Jitter",
-        "Random",
-    };
-
-    const char* RageAntiAimType[] = {
-        "Default Rage",
-        "Fake Arround Real",
-	    "Real Arround Fake",
-        "Semi Direction",
-        "Free Stand",
-    };
-    ImGui::Columns(1, nullptr, false); // Pick Rage Anti Aim type
-    {
-        ImGui::PushItemWidth(-1);
-        ImGui::Combo(XORSTR("##RageAntiAimType"), (int*)&Settings::AntiAim::RageAntiAim::Type, RageAntiAimType, IM_ARRAYSIZE(RageAntiAimType));
-        ImGui::PopItemWidth();
-    }
-
-    if (Settings::AntiAim::RageAntiAim::Type == RageAntiAimType::FreeStand)
-    {
-        ImGui::Columns(2, nullptr, false);
-        {
-            ImGui::ItemSize(ImVec2(0.0f, 0.0f), 0.0f);
-            ImGui::Text(XORSTR("Yaw Actual"));
-        }
-        ImGui::NextColumn();
-        {
-            ImGui::PushItemWidth(-1);
-            ImGui::Combo(XORSTR("##YACTUALTYPE"), (int*)& Settings::AntiAim::Yaw::typeReal, yType, IM_ARRAYSIZE(yType));
-            ImGui::PopItemWidth();
-        }
-
-        if(Settings::AntiAim::Yaw::typeReal == AntiAimRealType_Y::Jitter)
-            ImGui::SliderFloat(XORSTR("##RealJitterPercentage"), &Settings::AntiAim::RageAntiAim::JitterPercent, 1, 100, "Real Jitter Ammount : %.0f perent");
-    }
-    else
-    {
-        ImGui::Columns(2, nullptr, false);
-        {
-            ImGui::ItemSize(ImVec2(0.0f, 0.0f), 0.0f);
-            ImGui::Text(XORSTR("Yaw Fake"));
-            ImGui::ItemSize(ImVec2(0.0f, 0.0f), 0.0f);
-            ImGui::Text(XORSTR("Yaw Actual"));
-        }
-        ImGui::NextColumn();
-        {
-            ImGui::PushItemWidth(-1);
-            ImGui::Combo(XORSTR("##YFAKETYPE"), (int*)&Settings::AntiAim::Yaw::typeFake, yType, IM_ARRAYSIZE(yType));
-            ImGui::Combo(XORSTR("##YACTUALTYPE"), (int*)& Settings::AntiAim::Yaw::typeReal, yType, IM_ARRAYSIZE(yType));
-            ImGui::PopItemWidth();
-        }
-        // Real Percentage
-        ImGui::Columns(1);
-        {
-            ImGui::PushItemWidth(-1);
-            ImGui::SliderFloat(XORSTR("##MaxDeltaPercentage"), &Settings::AntiAim::RageAntiAim::AntiAImPercent, 0, 100, "Max Delta Ammount : %.0f percent");
-
-            if(Settings::AntiAim::Yaw::typeReal == AntiAimRealType_Y::Jitter || Settings::AntiAim::Yaw::typeFake == AntiAimFakeType_y::Jitter)
-                ImGui::SliderFloat(XORSTR("##JitterPercentage"), &Settings::AntiAim::RageAntiAim::JitterPercent, 0, 100, "Jitter Ammount : %.0f perent"); 
-         
-            ImGui::PopItemWidth();
-        }
-    }
-
-    ImGui::Spacing(); ImGui::Spacing();
-    ImGui::Columns(1, nullptr, false);
-    
-    ImGui::Checkbox(XORSTR("At the Target(alfa)"), &Settings::AntiAim::RageAntiAim::atTheTarget);
-    
-
-    ImGui::Spacing(); ImGui::Spacing();
-    ImGui::Columns(1);
-    ImGui::Text(XORSTR("Edging(Alfa)"));
-    
-    ImGui::Columns(2, nullptr, false);
-    {
-        ImGui::Checkbox(XORSTR("Enabled"), &Settings::AntiAim::HeadEdge::enabled);
-    }
-    ImGui::NextColumn();
-    {
-        ImGui::PushItemWidth(-1);
-        ImGui::SliderFloat(XORSTR("##EDGEDISTANCE"), &Settings::AntiAim::HeadEdge::distance, 20, 30, "Distance: %0.0f");
-        ImGui::PopItemWidth();
-    }
-
-    /*
-    ** Starting of Manual anti aim
-    */
-    ImGui::Spacing(); ImGui::Spacing();
-    ImGui::Columns(1);
-    ImGui::Checkbox(XORSTR("##Manual Anti Aim"), &Settings::AntiAim::ManualAntiAim::Enable);
-    ImGui::SameLine();
-    ImGui::Text(XORSTR("Manuan AntiAim"));
-
-    //For player to move right
-    ImGui::Text("Align Right");
-    ImGui::SameLine();
     ImGui::PushItemWidth(-1);
-    UI::KeyBindButton(&Settings::AntiAim::ManualAntiAim::RightButton);
+    ImGui::Columns();
+    {
+        ImGui::SliderFloat(XORSTR("##offset"), &Settings::AntiAim::offset, 0, 360, XORSTR(" Real Offset : %0.0f"));
+        ToolTip::Show(XORSTR("Ajust Your Player angle in Y axis Usefull in HVH"), ImGui::IsItemHovered());
+    }
+            
+    
     ImGui::PopItemWidth();
+}
 
-    // For player Move back
-    ImGui::Text("Align Back");
+void HvH::Jitter(){
+    ImGui::PushItemWidth(-1);
+    {
+        ImGui::Columns();
+        {
+            ImGui::Checkbox(XORSTR("Sync With Lag"), &Settings::AntiAim::Jitter::SyncWithLag);
+            ToolTip::Show(XORSTR("If you turn it off Jitter will work as a anti aim You can invert with Invert Key"), ImGui::IsItemHovered());
+        }
+        
+        ImGui::Columns();
+        {
+            if (Settings::AntiAim::Jitter::Value == 0){
+                ImGui::SliderInt(XORSTR("##Jitter"), &Settings::AntiAim::Jitter::Value, 0, 180, XORSTR(" Jitter Off Increase to Turn On"));
+            }else {
+                ImGui::SliderInt(XORSTR("##Jitter"), &Settings::AntiAim::Jitter::Value, 0, 180, XORSTR(" Angle : %d"));
+                ToolTip::Show(XORSTR("Boop Boop Shaking head enjoy but only fake will shake"), ImGui::IsItemHovered());
+            }
+        }
+    }
+    ImGui::PopItemWidth();
+}
+
+void HvH::RageFeatures(){
+    ImGui::Columns();
+    {
+        ImGui::Checkbox(XORSTR("##pitchDown"), &Settings::AntiAim::PitchDown);
+        ImGui::SameLine();
+        ImGui::Text(XORSTR("PitchDown"));
+        ToolTip::Show(XORSTR("Make Your Player Look Down"), ImGui::IsItemHovered());
+    }
+    ImGui::Columns();
+    {
+        ImGui::Checkbox(XORSTR("##FakeJitter"), &Settings::AntiAim::JitterFake);
+        ImGui::SameLine();
+        ImGui::Text(XORSTR("Fake Jitter"));
+        ToolTip::Show(XORSTR("It Will Jitter Fake and can break some Cheat resolvers but make sure you turn on jitter too"), ImGui::IsItemHovered());
+    }
+    ImGui::Columns();
+    {
+        ImGui::Checkbox(XORSTR("##AtTheTarget"), &Settings::AntiAim::atTheTarget);
+        ImGui::SameLine();
+        ImGui::Text(XORSTR("At The Target"));
+        ToolTip::Show(XORSTR("Automatically Angle Your player Towords your Enemy"), ImGui::IsItemHovered());
+    }
+    ImGui::Columns();
+    {
+        ImGui::Checkbox(XORSTR("##AutoDirection"), &Settings::AntiAim::autoDirection);
+        ImGui::SameLine();
+        ImGui::Text(XORSTR("Auto Direction"));
+        ToolTip::Show(XORSTR("AutoMatically Adjust Your Head According to your Enemy"), ImGui::IsItemHovered());
+    }
+
+    ImGui::Columns(); // Invert On Shoot
+    {
+        ImGui::Checkbox(XORSTR("##InvertOnShoot"), &Settings::AntiAim::InvertOnShoot);
+        ImGui::SameLine();
+        ImGui::Text(XORSTR("Invert On Shoot"));
+        ToolTip::Show(XORSTR("Will Invert Your AntiAim After every shoot"), ImGui::IsItemHovered());
+    }
+}
+
+void HvH::ManualAntiAim(){
+    ImGui::Checkbox(XORSTR("##ManualAntiAim"), &Settings::AntiAim::ManualAntiAim::Enable);
+    ImGui::SameLine();
+    ImGui::Text(XORSTR("Enable"));
+
+    ImGui::Text("Back");
     ImGui::SameLine();
     ImGui::PushItemWidth(-1);
     UI::KeyBindButton(&Settings::AntiAim::ManualAntiAim::backButton);
     ImGui::PopItemWidth();
 
-    //For player to move left
-    ImGui::Text("Align Left");
+    ImGui::Text("Right");
+    ImGui::SameLine();
+    ImGui::PushItemWidth(-1);
+    UI::KeyBindButton(&Settings::AntiAim::ManualAntiAim::RightButton);
+    ImGui::PopItemWidth();
+
+    ImGui::Text("Left ");
     ImGui::SameLine();
     ImGui::PushItemWidth(-1);
     UI::KeyBindButton(&Settings::AntiAim::ManualAntiAim::LeftButton);
     ImGui::PopItemWidth();
-    // END
+
 }
 
-static void LegitAntiAim()
-{
-    const char* LegitAAType[] = {
-                                "OverWatchProof",
-                                "FakeLegitAA",
-                                "Experimental"
-                                };
-    /*
-    * part where legit anti aim ui constructed
-    */
-    // Really nothing much here to add more about
-    ImGui::Spacing();
+void HvH::Others(){
+
+    ImGui::Columns();
+    {
+        ImGui::Checkbox(XORSTR("ShowReal"), &Settings::AntiAim::ShowReal);
+        ToolTip::Show(XORSTR("A arrow will show the side of the real"), ImGui::IsItemHovered());
+    }
     ImGui::PushItemWidth(-1);
-    ImGui::Combo(XORSTR("##LegitAAType"), (int*)&Settings::AntiAim::LegitAntiAim::legitAAtype, LegitAAType, IM_ARRAYSIZE(LegitAAType));
-    ImGui::Spacing();
-    ImGui::Columns(1, nullptr, false);
-    ImGui::Text(XORSTR("InvertKey"));
+
+    ImGui::Checkbox(XORSTR("FakeDuck"), &Settings::AntiAim::FakeDuck::enabled);
+    ImGui::SameLine(); 
+    UI::KeyBindButton(&Settings::AntiAim::FakeDuck::fakeDuckKey);
+
+    ImGui::Checkbox(XORSTR("FakeWalk"), &Settings::AntiAim::FakeWalk::enabled);
     ImGui::SameLine();
-    UI::KeyBindButton(&Settings::AntiAim::LegitAntiAim::InvertKey); 
+    ImGui::SliderFloat(XORSTR("##FakeWalkSPeed"), &Settings::AntiAim::FakeWalk::Speed, 0, 100, XORSTR("Amount: %0.f"));
+    if ( Settings::AntiAim::FakeWalk::enabled ) 
+        UI::KeyBindButton(&Settings::AntiAim::FakeWalk::Key);
+
+    ImGui::Checkbox(XORSTR("SlowWalk"), &Settings::AntiAim::SlowWalk::enabled);
+    ImGui::SameLine();
+    ImGui::SliderFloat(XORSTR("##SlowWalkSPeed"), &Settings::AntiAim::SlowWalk::Speed, 0, 100, XORSTR("Amount: %0.f"));
+    if ( Settings::AntiAim::SlowWalk::enabled ) 
+        UI::KeyBindButton(&Settings::AntiAim::SlowWalk::Key);
+    
     ImGui::PopItemWidth();
-    /*
-    * End of legit antiaim
-    */
+            
 }
 
-static void LagacyAntiAim()
-{
-    ImGui::SliderFloat(XORSTR("##LBYOFFSET"), &Settings::AntiAim::LBYBreaker::offset, 0, 360, "LBY Offset(from fake): %0.f");
+void HvH::FakeLag(){
+    ImGui::PushItemWidth(-1);
+            
+    ImGui::Checkbox(XORSTR("FakeLag"), &Settings::FakeLag::enabled);
+    ImGui::SameLine();
+    ImGui::SliderInt(XORSTR("##FAKELAGAMOUNT"), &Settings::FakeLag::value, 0, 16, XORSTR("Amount: %d"));
+    ImGui::Checkbox(XORSTR("Impulse FakeLag"), &Settings::FakeLag::impulseLag);    
+    ToolTip::Show(XORSTR("It Will Lag and then stop lagging for certain Tick Count IDK how to explain this in words"), ImGui::IsItemHovered());
+
+    ImGui::Checkbox(XORSTR("OnShot FakeLag"), &Settings::FakeLag::OnShot::Enable);
+    ToolTip::Show(XORSTR("Will Lag Upto SpecificTicks On SHot"),ImGui::IsItemHovered());
+    ImGui::SameLine();
+    ImGui::SliderInt(XORSTR("##FAKELAGAMOUNTOnshot"), &Settings::FakeLag::OnShot::Value, 0, 16, XORSTR("Amount: %d"));
+    ToolTip::Show(XORSTR("Will Lag Upto SpecificTicks On Shot"),ImGui::IsItemHovered());
+
+    ImGui::Checkbox(XORSTR("AfterShot FakeLag"), &Settings::FakeLag::AfterShot::Enable);
+    ToolTip::Show(XORSTR("Will Lag Upto SpecificTicks After You shot better in picking"),ImGui::IsItemHovered());
+    ImGui::SameLine();
+    ImGui::SliderInt(XORSTR("##FAKELAGAMOUNTAfterShot"), &Settings::FakeLag::AfterShot::Value, 0, 16, XORSTR("Amount: %d"));
+    ToolTip::Show(XORSTR("Will Lag Upto SpecificTicks After You shot better in picking"),ImGui::IsItemHovered());
+
+    ImGui::Checkbox(XORSTR("InAir FakeLag"), &Settings::FakeLag::InAir::Enable);
+    ToolTip::Show(XORSTR("Lag When You Are In Air"),ImGui::IsItemHovered());
+    ImGui::SameLine();
+    ImGui::SliderInt(XORSTR("##FAKELAGAMOUNTINAIR"), &Settings::FakeLag::InAir::Value, 0, 16, XORSTR("Amount: %d"));
+    ToolTip::Show(XORSTR("Lag When You Are In Air"),ImGui::IsItemHovered());         
+    ImGui::PopItemWidth();
 }
+
+void HvH::LBYBreak(){
+    ImGui::Checkbox(XORSTR("Enable"), &Settings::AntiAim::lbyBreak::Enabled);
+    ToolTip::Show(XORSTR("Enable Lby Break"), ImGui::IsItemHovered());
+
+    ImGui::Checkbox(XORSTR("Hide Break"), &Settings::AntiAim::lbyBreak::notSend);
+    ToolTip::Show(XORSTR("Do the send data when you are breaking lby"), ImGui::IsItemHovered());
+
+    ImGui::PushItemWidth(-1);
+    {
+        ImGui::SliderInt(XORSTR("##LbyAngle"), &Settings::AntiAim::lbyBreak::angle, 0, 180, XORSTR("Amount: %d"));
+        ToolTip::Show(XORSTR("Angle to break the LBY you can invert with invert key"), ImGui::IsItemHovered());
+    }
+    ImGui::PopItemWidth();
+}
+
 void HvH::RenderTab()
 {
-    
-    static char* AntiAimType[] = {
-        "Legit AntiAIm",
-        "Rage AntiAIm",
-        "LBY Breaker",
-    }; 
-    
-    ImGui::Spacing();
+
+   ImGui::Checkbox(XORSTR("Enable"), &Settings::AntiAim::Enabled);
 
     ImGui::Columns(2, nullptr, false);
     {
-        switch (Settings::AntiAim::Type::antiaimType)
-        {
-        case AntiAimType::LegitAntiAim:
-           if ( ImGui::Checkbox(XORSTR("##EnableLegitAim"), &Settings::AntiAim::LegitAntiAim::enable) )
-                Settings::AntiAim::RageAntiAim::enable = false;
-            break;
-        case AntiAimType::RageAntiAim:
-            if ( ImGui::Checkbox(XORSTR("##EnableRageAntiAim"), &Settings::AntiAim::RageAntiAim::enable) )
-                Settings::AntiAim::LegitAntiAim::enable = false;
-            break;
-        case AntiAimType::Lagacy:
-            ImGui::Checkbox(XORSTR("##ENABLELbyBreaker"), &Settings::AntiAim::LBYBreaker::enabled);
-            break;
-        default:
-            break;
-        }
-            
-        ImGui::SameLine();
-        ImGui::PushItemWidth(-1);
-        ImGui::Combo(XORSTR("##AntiAimType"), (int*)&Settings::AntiAim::Type::antiaimType, AntiAimType, IM_ARRAYSIZE(AntiAimType));
-        ImGui::PopItemWidth();
         ImGui::BeginChild(XORSTR("HVH1"), ImVec2(0, 0), false);
         {
-            switch (Settings::AntiAim::Type::antiaimType)
+            
+            ImGui::BeginGroupPanel(XORSTR("AntiAim"));
             {
-            case AntiAimType::RageAntiAim:
-                RageAntiAIm();
-                break;
-            case AntiAimType::LegitAntiAim:
-                LegitAntiAim();
-                break;
-            case AntiAimType::Lagacy:
-                LagacyAntiAim();
-                break;
-            default:
-                break;
-            }
+                AntiAim();
+            }ImGui::EndGroupPanel();
+           
+            ImGui::BeginGroupPanel(XORSTR("Rage"));
+            {
+                RageFeatures();
+            }ImGui::EndGroupPanel();   
+            
+            ImGui::BeginGroupPanel(XORSTR("Manaul AntiAim"));
+            {
+                ManualAntiAim();
+            }ImGui::EndGroupPanel();
+
+            
         }
         ImGui::EndChild();
     }
@@ -220,16 +218,26 @@ void HvH::RenderTab()
     {
         ImGui::BeginChild(XORSTR("HVH2"), ImVec2(0, 0), false);
         {
-            ImGui::Checkbox(XORSTR("Angle Indicator"), &Settings::AngleIndicator::enabled);
-            ImGui::Checkbox(XORSTR("Fake Lag"), &Settings::FakeLag::enabled);
-            ImGui::SameLine();
-            ImGui::SliderInt(XORSTR("##FAKELAGAMOUNT"), &Settings::FakeLag::value, 0, 100, XORSTR("Amount: %0.f"));
-			ImGui::Checkbox(XORSTR("Adaptive Fake Lag"), &Settings::FakeLag::adaptive);
-            
-            ImGui::Checkbox(XORSTR("FakeDuck"), &Settings::AntiAim::FakeDuck::enabled);
-            ImGui::SameLine(); 
-            UI::KeyBindButton(&Settings::AntiAim::FakeDuck::fakeDuckKey);
-            ImGui::EndChild();
+            ImGui::BeginGroupPanel(XORSTR("Jitter"));
+            {
+                Jitter();
+            }ImGui::EndGroupPanel();
+
+            ImGui::BeginGroupPanel(XORSTR("Others"));
+            {
+                Others();
+            }ImGui::EndGroupPanel();
+
+            ImGui::BeginGroupPanel(XORSTR("Lby Break"));
+            {
+                LBYBreak();
+            }ImGui::EndGroupPanel();
+
+            ImGui::BeginGroupPanel(XORSTR("FakeLag"));
+            {
+                FakeLag();
+            }ImGui::EndGroupPanel();
         }
+        ImGui::EndChild();
     }
 }

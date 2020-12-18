@@ -15,6 +15,7 @@
 #include "../ATGUI/texture.h"
 #include "../Resources/tux.h"
 #include "AntiAim/antiaim.h"
+#include "AimBot/ragebot.hpp"
 
 #include <climits>
 #include <deque>
@@ -190,7 +191,6 @@ static bool GetBox( C_BaseEntity* entity, int& x, int& y, int& w, int& h ) {
 	return true;
 }
 
-
 ImColor ESP::GetESPPlayerColor(C_BasePlayer* player, bool visible)
 {
 	C_BasePlayer* localplayer = (C_BasePlayer*) entityList->GetClientEntity(engine->GetLocalPlayer());
@@ -284,53 +284,15 @@ bool ESP::WorldToScreen( const Vector &origin, ImVec2 * const screen ) {
 
 static void DrawBox( ImColor color, int x, int y, int w, int h, C_BaseEntity* entity, BoxType& boxtype ) {
  
-	if ( boxtype == BoxType::FRAME_2D ) {
-		int VertLine = w / 3;
-		int HorzLine = h / 3;
-		int squareLine = std::min( VertLine, HorzLine );
-
-		// top-left corner / color
-		Draw::AddRect( x, y, x + squareLine, y + 1, color );
-		Draw::AddRect( x, y, x + 1, y + squareLine, color );
-
-
-
-		// top-left corner / missing edges
-		Draw::AddRect( x + squareLine, y - 1, x + squareLine + 1, y + 2, ImColor( 10, 10, 10, 190 ) );
-		Draw::AddRect( x - 1, y + squareLine, x + 2, y + squareLine + 1, ImColor( 10, 10, 10, 190 ) );
-
-
-		// top-right corner / color
-		Draw::AddRect( x + w - squareLine, y, x + w, y + 1, color );
-		Draw::AddRect( x + w - 1, y, x + w, y + squareLine, color );
-
-
-
-		// top-right corner / missing edges
-		Draw::AddRect( x + w - squareLine - 1, y - 1, x + w - squareLine, y + 2, ImColor( 10, 10, 10, 190 ) );
-		Draw::AddRect( x + w - 2, y + squareLine, x + w + 1, y + squareLine + 1, ImColor( 10, 10, 10, 190 ) );
-
-
-		// bottom-left corner / color
-		Draw::AddRect( x, y + h - 1, x + squareLine, y + h, color );
-		Draw::AddRect( x, y + h - squareLine, x + 1, y + h, color );
-
-
-
-		// bottom-left corner / missing edges
-		Draw::AddRect( x + squareLine, y + h - 2, x + squareLine + 1, y + h + 1, ImColor( 10, 10, 10, 190 ) );
-		Draw::AddRect( x - 1, y + h - squareLine - 1, x + 2, y + h - squareLine, ImColor( 10, 10, 10, 190 ) );
-
-
-		// bottom-right corner / color
-		Draw::AddRect( x + w - squareLine, y + h - 1, x + w, y + h, color );
-		Draw::AddRect( x + w - 1, y + h - squareLine, x + w, y + h, color );
-
-
-		// bottom-right corner / missing edges
-		Draw::AddRect( x + w - squareLine, y + h - 2, x + w - squareLine + 1, y + h + 1, ImColor( 10, 10, 10, 190 ) );
-		Draw::AddRect( x + w - 2, y + h - squareLine - 1, x + w + 1, y + h - squareLine, ImColor( 10, 10, 10, 190 ) );
-	} else if ( boxtype == BoxType::FLAT_2D ) {
+	if ( boxtype == BoxType::FRAME_2D ) 
+	{
+		Draw::AddLine(x,y,x+w, y, color);
+		Draw::AddLine(x+w,y,x+w, y+h, color);
+		Draw::AddLine(x+w,y+h,x, y+h, color);
+		Draw::AddLine(x,y+h,x, y, color);	
+	} 
+	else if ( boxtype == BoxType::FLAT_2D ) 
+	{
 		int VertLine = ( int ) ( w * 0.33f );
 		int HorzLine = ( int ) ( h * 0.33f );
 		int squareLine = std::min( VertLine, HorzLine );
@@ -371,7 +333,9 @@ static void DrawBox( ImColor color, int x, int y, int w, int h, C_BaseEntity* en
 		Draw::AddRect( x + w - 2, y + h - squareLine - 1, x + w + 1, y + h - squareLine, ImColor( 10, 10, 10, 190 ) );
 
 		Draw::AddRectFilled( x, y, x + w, y + h, ImColor( color.Value.x, color.Value.y, color.Value.z, 21 * (1.0f/255.0f) ) );
-	} else if ( boxtype == BoxType::BOX_3D ) {
+	} 
+	else if ( boxtype == BoxType::BOX_3D ) 
+	{
 		Vector vOrigin = entity->GetVecOrigin();
 		Vector min = entity->GetCollideable()->OBBMins() + vOrigin;
 		Vector max = entity->GetCollideable()->OBBMaxs() + vOrigin;
@@ -439,16 +403,36 @@ static void DrawBox( ImColor color, int x, int y, int w, int h, C_BaseEntity* en
 }*/
 }
 
-/* Not using anymore
-static void DrawSprite( int x, int y, int w, int h, C_BaseEntity* entity ){
-	if ( Settings::ESP::Sprite::type == SpriteType::SPRITE_TUX ) {
-		static Texture sprite(tux_rgba, tux_width, tux_height);
+static void DrawBulletTracers(CUserCmd* cmd)
+{
+    C_BasePlayer* localplayer = (C_BasePlayer*) entityList->GetClientEntity(engine->GetLocalPlayer());
+    if (!localplayer) 
+		return;
 
-		sprite.Draw(x, y, ((float)h/tux_height)*tux_width, h);
-	}
-	// TODO: Handle other sprites
+	C_BasePlayer* entity = (C_BasePlayer*) entityList->GetClientEntity(ESP::bulletBeam.enemyIndex);
+    if (ESP::bulletBeam.bulletPosition.empty())
+		return;
+	if (!entity || !entity->GetAlive())
+		return;
+	
+	bool isteammate = Entity::IsTeamMate(entity, localplayer);
+
+	if ( isteammate && engine->GetLocalPlayer() != ESP::bulletBeam.enemyIndex  && !Settings::ESP::FilterAlise::BulletBeam::enabled)
+		return;
+	else if ( !isteammate && !Settings::ESP::FilterEnemy::BulletBeam::enabled)
+		return;
+	else if (engine->GetLocalPlayer() == ESP::bulletBeam.enemyIndex && !Settings::ESP::FilterLocalPlayer::BulletBeam::enabled)
+		return;
+	
+	float shite = 0.3f;
+	ImColor color = ImColor(255,0,0,255);
+
+	for (float i = 0.01f; i <= shite; i += 0.01){
+		debugOverlay->DrawPill( entity->GetEyePosition(), ESP::bulletBeam.bulletPosition.at(0), i, color.Value.x * 255, color.Value.y * 255, color.Value.z * 255, 100, 10 );
+	}	
+	
+	ESP::bulletBeam.bulletPosition.clear(); // trace Initialising in ragebot.cpp events
 }
-*/
 
 static void DrawEntity( C_BaseEntity* entity, const char* string, ImColor color ) {
 	int x, y, w, h;
@@ -503,7 +487,11 @@ static void DrawTracer( C_BasePlayer* player, TracerType& tracerType ) {
 	else if ( tracerType == TracerType::BOTTOM )
 		y = Paint::engineHeight;
 
+	
 	bool bIsVisible = Entity::IsVisible( player, CONST_BONE_HEAD, 180.f, Settings::ESP::Filters::smokeCheck );
+	if (bIsVisible)	return;
+	// Draw::Rectangle(x+10,y+10,x,y, Color(125,120,14,255));
+	
 	Draw::AddLine( ( int ) ( src.x ), ( int ) ( src.y ), x, y, ESP::GetESPPlayerColor( player, bIsVisible ) );
 }
 
@@ -513,7 +501,7 @@ static void DrawAimbotSpot( ) {
 		Settings::Debug::AutoAim::target = {0,0,0};
 		return;
 	}
-	if ( !Settings::Legitbot::AutoAim::enabled || !Settings::Legitbot::enabled ){
+	if ( !Settings::Legitbot::enabled ){
 		Settings::Debug::AutoAim::target = {0,0,0};
 		return;
 	}
@@ -577,7 +565,7 @@ static void DrawAutoWall(C_BasePlayer *player) {
 			continue;
 
 		AutoWall::FireBulletData data;
-		int damage = (int)AutoWall::GetDamage( bone3D, !Settings::Legitbot::friendly, data );
+		int damage = (int)AutoWall::GetDamage( bone3D, true, data );
 		char buffer[4];
 		snprintf(buffer, sizeof(buffer), "%d", damage);
 		Draw::AddText( bone2D.x, bone2D.y, buffer, ImColor( 255, 0, 255, 255 ) );
@@ -626,7 +614,7 @@ static void DrawAutoWall(C_BasePlayer *player) {
 
 	AutoWall::FireBulletData data;
 	for ( int i = 0; i < 11; i++ ) {
-		int damage = (int)AutoWall::GetDamage( headPoints[i], !Settings::Legitbot::friendly, data );
+		int damage = (int)AutoWall::GetDamage( headPoints[i], true, data );
 		char buffer[4];
 		snprintf(buffer, sizeof(buffer), "%d", damage);
 
@@ -1381,7 +1369,7 @@ static void DrawGlow()
 		glow_object.m_bRenderWhenUnoccluded = true;
 	}
 }
-
+/*
 static void DrawFOVCrosshair()
 {
 	if (!Settings::ESP::FOVCrosshair::enabled)
@@ -1434,7 +1422,7 @@ static void DrawFOVCrosshair()
 	else
 		Draw::AddCircle(Paint::engineWidth / 2, Paint::engineHeight / 2, radius, Settings::ESP::FOVCrosshair::color.Color(), std::max(12, (int)radius*2));
 }
-
+*/
 static void DrawSpread()
 {
     if ( !Settings::ESP::Spread::enabled && !Settings::ESP::Spread::spreadLimit )
@@ -1459,7 +1447,7 @@ static void DrawSpread()
         }
     }
     if ( Settings::ESP::Spread::spreadLimit ) {
-        float cone = Settings::Legitbot::ShootAssist::Hitchance::value;
+        float cone = 100;
         if ( cone > 0.0f ) {
             float radius = ( cone * Paint::engineHeight ) / 1.5f;
             Draw::AddRect( ( ( Paint::engineWidth / 2 ) - radius ), ( Paint::engineHeight / 2 ) - radius + 1,
@@ -1598,8 +1586,8 @@ void ESP::Paint()
 		}
 	}
 
-	if (Settings::ESP::FOVCrosshair::enabled)
-		DrawFOVCrosshair();
+	// if (Settings::ESP::FOVCrosshair::enabled)
+	// 	DrawFOVCrosshair();
 	if (Settings::ESP::Spread::enabled || Settings::ESP::Spread::spreadLimit)
 		DrawSpread();
 	if (Settings::NoScopeBorder::enabled && localplayer->IsScoped())
@@ -1620,11 +1608,14 @@ void ESP::DrawModelExecute()
 
 void ESP::CreateMove(CUserCmd* cmd)
 {
+	if ( !Settings::ESP::enabled )
+		return;
 	viewanglesBackup = cmd->viewangles;
 
-    if( Settings::ESP::enabled && Settings::ESP::Sounds::enabled && (Settings::ESP::Filters::allies || Settings::ESP::Filters::enemies || Settings::ESP::Filters::localplayer) ){
+    if( Settings::ESP::Sounds::enabled && (Settings::ESP::Filters::allies || Settings::ESP::Filters::enemies || Settings::ESP::Filters::localplayer) ){
         CheckActiveSounds();
     }
+	DrawBulletTracers(cmd);
 }
 
 void ESP::PaintToUpdateMatrix( ) {

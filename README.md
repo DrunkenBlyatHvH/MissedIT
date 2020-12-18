@@ -1,19 +1,19 @@
-<p align="center">
-<img src="./Pictures/missedit.png">
-</p>
-
-==================
-
-# MissedIT 
+![missedit](Pictures/missedit.gif)
 
 # It looks like we are starting to get detected. Use public forks at your own Risk! 
 
-Want to chat or play with other MissedIT users? Join us on Discord :- <a href = https://discord.gg/PDtg8hd><b>Hacker.Police Discord</b></a>
+**Want to chat or play with other MissedIT users?**
 
+[![Discord](https://img.shields.io/discord/463752820026376202.svg?label=&logo=discord&logoColor=ffffff&color=7389D8&labelColor=6A7EC2)](https://discord.gg/PDtg8hd)
+[![Gitter](https://badges.gitter.im/MissedIT-Fuzion-AimTux/community.svg)](https://gitter.im/MissedIT-Fuzion-AimTux/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+
+**Want To chat with other fuzion users?**
+
+[![Gitter](https://badges.gitter.im/MissedIT-Fuzion-AimTux/community.svg)](https://gitter.im/Aimtux-Fuzion)
 
 ## What is MissedIT?
 
-A fully featured internal hack for *CounterStrike : Global Offensive* written in C++. Which is a Fork of <a href = ""><b>Aimtux-Fuzion</b></a>
+A fully featured internal hack for *CounterStrike : Global Offensive* written in C++. Which is a Fork of **[Aimtux-Fuzion](https://github.com/LWSS/Fuzion)**
 
 ## Compiling
 
@@ -23,7 +23,7 @@ A fully featured internal hack for *CounterStrike : Global Offensive* written in
 
 If you are having problems compiling make sure you've got the latest version of `g++`.
 
-==================
+==================||==================
 
 __Ubuntu-Based / Debian:__
 ```bash
@@ -38,7 +38,7 @@ __Fedora:__
 sudo dnf install cmake gcc-c++ gdb git libstdc++-static mesa-libGL-devel SDL2-devel zlib-devel libX11-devel patchelf
 ```
 
-===================
+===================||===================
 
 ## How To use MissedIT
 ### Step 1 : Download MissedIT
@@ -138,9 +138,12 @@ To add a config, copy the folder containing it to `~/.config/MissedIT/CSGO`
 
 ## Screenshots
 
-![LegitBot](Pictures/Screenshot1.png)
-![RageBot](Pictures/Screenshot2.png)
-![esp](Pictures/Screenshot3.png)
+![LegitBot](Pictures/Legitbot.png)
+![RageBot](Pictures/Ragebot.png)
+![Triggerbot](Pictures/Triggerbot.png)
+![AntiAim](Pictures/AntiAim.png)
+![Visuals](Pictures/Visuals.png)
+![Colors](Pictures/Colors.png)
 ![Misc](Pictures/Screenshot4.png)
 
 

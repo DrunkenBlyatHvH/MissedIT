@@ -63,6 +63,9 @@ enum class ChamsType : int
 	ADDITIVETWO,
 	WIREFRAME,
 	FLAT,
+	PEARL,
+	GLOW,
+	GLOWF,
 	NONE,
 };
 
@@ -153,7 +156,6 @@ enum class AntiAimRealType_Y : int
 	NONE,
 	Static,
 	Jitter,
-	Randome,
 };
 
 enum class AntiAimFakeType_y : int
@@ -164,33 +166,16 @@ enum class AntiAimFakeType_y : int
 	Randome,
 };
 
-enum class AntiAimType : int
-{
-	LegitAntiAim,
-	RageAntiAim,
-	Lagacy,
-};
-
-enum class RageAntiAimType : int
-{
-	DefaultRage,
-	FakeArroundReal,
-	RealArroundFake,
-	SemiDirection,
-	FreeStand,
-};
-
-enum class LegitAAType : int
-{
-    OverWatchProof,
-	FakeLegitAA,
-	Experimental,
-};
-
 enum class SkinAndModel : int
 {
 	Skins,
 	Model,
+};
+
+enum class HitchanceType : int 
+{
+	Normal = 0,
+	ForceAccuracy,
 };
 
 struct LegitWeapon_t
@@ -274,20 +259,25 @@ struct LegitWeapon_t
 
 struct RageWeapon_t
 {
-	bool silent,
-		 friendly,
-		 closestBone,
-		 autoPistolEnabled,
-		 autoShootEnabled,
-		 autoScopeEnabled,
+	bool silent = false,
+		 friendly = false,
+		 closestBone = false,
+		 autoPistolEnabled = false,
+		 autoShootEnabled = false,
+		 autoScopeEnabled = false,
 		 autoSlow,
-		 scopeControlEnabled,
-		 DoubleFire;
+		 scopeControlEnabled = false,
+		 DoubleFire = false,
+		 AutoCroutch = false,
+		 OnShot = false,
+		 OnShotOnKey = false;
 	float MinDamage = 50.f,
-		  HitChance = 20.f;
+		  DamageOverride = 100.f,
+		  MinDamageOnshot = 100.f;
+	int HitChance = 50;
 	bool desireBones[6];
 	bool desiredMultiBones[6];
-	
+	HitchanceType hitchanceType = HitchanceType::Normal;
 
 	bool operator == (const RageWeapon_t& Ragebotanother) const
 	{
@@ -299,23 +289,24 @@ struct RageWeapon_t
 				return false;
 		}
 			
-
-		return this->silent == Ragebotanother.silent &&
-			this->friendly == Ragebotanother.friendly &&
-			this->closestBone == Ragebotanother.closestBone &&
-			this->autoPistolEnabled == Ragebotanother.autoPistolEnabled &&
-			this->autoShootEnabled == Ragebotanother.autoShootEnabled &&
-			this->autoScopeEnabled == Ragebotanother.autoScopeEnabled &&
-			this->MinDamage == Ragebotanother.MinDamage &&
-			this->autoSlow == Ragebotanother.autoSlow &&
-			this->scopeControlEnabled == Ragebotanother.scopeControlEnabled && 
-			this->HitChance == Ragebotanother.HitChance && 
-			this->DoubleFire == Ragebotanother.DoubleFire;
+		return 	this->silent == Ragebotanother.silent &&
+				this->friendly == Ragebotanother.friendly &&
+				this->closestBone == Ragebotanother.closestBone &&
+				this->autoPistolEnabled == Ragebotanother.autoPistolEnabled &&
+				this->autoShootEnabled == Ragebotanother.autoShootEnabled &&
+				this->autoScopeEnabled == Ragebotanother.autoScopeEnabled &&
+				this->MinDamage == Ragebotanother.MinDamage &&
+				this->autoSlow == Ragebotanother.autoSlow &&
+				this->scopeControlEnabled == Ragebotanother.scopeControlEnabled && 
+				this->HitChance == Ragebotanother.HitChance && 
+				this->DoubleFire == Ragebotanother.DoubleFire &&
+				this->AutoCroutch == Ragebotanother.AutoCroutch && 
+				this->DamageOverride == Ragebotanother.DamageOverride &&
+				this->hitchanceType == Ragebotanother.hitchanceType &&
+				this->OnShot == Ragebotanother.OnShot;
 	}
 
 } const ragedefault{};
-
-
 
 class ColorVar
 {
@@ -375,7 +366,7 @@ namespace Settings
 	{
 		inline ColorVar mainColor = ImColor(42, 45, 42, 255 );
 		inline ColorVar bodyColor = ImColor( 0, 0, 0, 245 );
-		inline ColorVar fontColor = ImColor( 238, 224, 224, 154 );
+		inline ColorVar fontColor = ImColor( 238, 224, 224, 255 );
 		inline ColorVar accentColor = ImColor( 0, 171, 178, 255 );
 		inline bool imGuiAliasedLines = false;
 		inline bool imGuiAliasedFill = true;
@@ -451,152 +442,6 @@ namespace Settings
 	namespace Legitbot
 	{
 		inline bool enabled = false;
-        inline bool silent = false;
-        inline bool friendly = false;
-		inline float minDamage = 10.f;
-        inline Bone bone = BONE_HEAD;
-        inline ButtonCode_t aimkey = ButtonCode_t::MOUSE_MIDDLE;
-        inline bool aimkeyOnly = false;
-
-		namespace Smooth
-		{
-			inline bool enabled = false;
-            inline float value = 0.5f;
-            inline SmoothType type = SmoothType::SLOW_END;
-
-			namespace Salting
-			{
-				inline bool enabled = false;
-                inline float multiplier = 0.0f;
-			}
-		}
-
-		namespace ErrorMargin
-		{
-			inline bool enabled = false;
-			inline float value = 0.0f;
-		}
-
-		namespace AutoAim
-		{
-			inline bool enabled = false;
-            inline float fov = 15.f;
-            inline bool realDistance = false;
-            inline bool closestBone = false;
-            inline bool desiredBones[] = {true, true, true, true, true, true, true, // center mass
-                                          false, false, false, false, false, false, false, // left arm
-                                          false, false, false, false, false, false, false, // right arm
-                                          false, false, false, false, false, // left leg
-                                          false, false, false, false, false  // right leg
-            };
-			
-            inline bool engageLock = false;
-            inline bool engageLockTR = false; // Target Reacquisition ( re-target after getting a kill when spraying ).
-            inline int engageLockTTR = 700; // Time to Target Reacquisition in ms
-		}
-
-		namespace ShootAssist
-		{
-			inline bool enabled = false;
-
-			namespace ShotDelay
-			{
-				inline float Value = 100.f;
-			}	
-			namespace MinShotFire
-			
-			{
-				inline int value = 6;
-			} // namespace MinShotFire
-
-			namespace Hitchance
-			{
-				inline bool enabled = false;
-				inline float value = 20;
-			}
-		}
-
-		namespace AutoWall
-		{
-			inline bool enabled = false;
-			inline float value = 10.0f;
-		}
-
-		namespace AimStep
-		{
-			inline bool enabled = false;
-			inline float min = 25.0f;
-			inline float max = 35.0f;
-		}
-
-		namespace RCS
-		{
-			inline bool enabled = false;
-			inline bool always_on = false;
-			inline float valueX = 2.0f;
-			inline float valueY = 2.0f;
-		}
-
-		namespace AutoPistol
-		{
-			inline bool enabled = false;
-		}
-
-		namespace AutoShoot
-		{
-			inline bool enabled = false;
-			inline bool velocityCheck = false;
-			inline bool autoscope = false;
-		}
-
-		namespace AutoCrouch
-		{
-			inline bool enabled = false;
-		}
-
-		namespace AutoSlow
-		{
-			inline bool enabled = false;
-		}
-
-		namespace NoShoot
-		{
-			inline bool enabled = false;
-		}
-
-		namespace IgnoreJump
-		{
-			inline bool enabled = false;
-		}
-
-		namespace IgnoreEnemyJump
-		{
-			inline bool enabled = false;
-		}
-
-		namespace SmokeCheck
-		{
-			inline bool enabled = false;
-		}
-
-		namespace FlashCheck
-		{
-			inline bool enabled = false;
-		}
-
-		
-		
-		
-
-		namespace Prediction
-		{
-			inline bool enabled = false;
-		}
-
-		namespace ScopeControl
-		{
-			inline bool enabled = false;
-		}
 
 		inline std::unordered_map<ItemDefinitionIndex, LegitWeapon_t, Util::IntHash<ItemDefinitionIndex>> weapons = {
                 { ItemDefinitionIndex::INVALID, defaultSettings },
@@ -605,74 +450,32 @@ namespace Settings
 
 	namespace Ragebot
 	{
-		inline float MinDamage = 50.f;
 		inline bool enabled = false;
-        inline bool silent = false;
-        inline bool friendly = false;
-		inline bool DoubleFire = false;
-
-		namespace AutoAim
-		{
-			inline bool enabled = false;
-			inline bool desireBones[] = {true, true, true, true, true, true};
-		}
-
-		namespace AutoPistol
-		{
-			inline bool enabled = false;
-		}
-
-		namespace AutoShoot
-		{
-			inline bool enabled = false;
-			inline bool velocityCheck = false;
-			inline bool autoscope = false;
-		}
-
-		namespace AutoSlow
-		{
-			inline bool enabled = false;
-		}
-
-		namespace HitChance
-		{
-			inline bool enabled = false;
-			inline float value = 20.f;
-		}
-
-		namespace HitChanceOverwrride 
-		{
-			inline bool enable = false;
-			inline float value = 1.0f;
-		}
-
-		namespace ScopeControl
-		{
-			inline bool enabled = false;
-		}
-
-		namespace AutoCrouch
-		{
-			inline bool enable = false;
-		}
-
-		namespace backTrack
-		{
-			inline bool enabled = false;
-		}
-
+		inline ButtonCode_t DamageOverrideBtn = ButtonCode_t::MOUSE_MIDDLE;
+		inline ButtonCode_t OnShotBtn = ButtonCode_t::KEY_5;
 		inline std::unordered_map<ItemDefinitionIndex, RageWeapon_t, Util::IntHash<ItemDefinitionIndex>> weapons = {
-                { ItemDefinitionIndex::INVALID, ragedefault },
+            { ItemDefinitionIndex::INVALID, ragedefault },
         };
 	}
 
+	namespace LagComp
+	{
+		inline bool enabled = false;
+	}
 
+	namespace BackTrack
+	{
+		inline bool enabled = false;
+	}
 
 	namespace Triggerbot
 	{
 		inline bool enabled = false;
-		inline ButtonCode_t key = ButtonCode_t::KEY_LALT;
-
+		namespace OnKey{
+			inline bool enable = true;
+			inline ButtonCode_t key = ButtonCode_t::KEY_LALT;
+		}
+		
 		namespace Magnet
 		{
 			inline bool enabled = false;
@@ -703,35 +506,22 @@ namespace Settings
 
     namespace AntiAim
     {
-		namespace Type
-		{
-			inline AntiAimType antiaimType = AntiAimType::LegitAntiAim;
-		}
-        namespace AutoDisable
-        {
-            inline bool noEnemy = false;
-            inline bool knifeHeld = false;
-        }
-        namespace RageAntiAim
-        {
-            inline bool enable = false;
-			inline ButtonCode_t InvertKey = ButtonCode_t::KEY_T;
-			inline bool inverted = false;
-			inline float AntiAImPercent = 100.f;
-			inline float JitterPercent = 30.f;
-			inline bool atTheTarget = false;
-			inline bool SendReal = false;
-			inline RageAntiAimType Type = RageAntiAimType::RealArroundFake;
-        }
-		namespace LegitAntiAim 
-		{
-			inline bool enable = false;
-			inline bool OverWatchProof = true;
-			inline ButtonCode_t InvertKey = ButtonCode_t::KEY_T;
-			inline bool inverted = false;
-			inline float RealPercentage = 30.f;
-			inline float RealPercentageInCroutch = 30.f;
-			inline LegitAAType legitAAtype = LegitAAType::OverWatchProof;
+		inline bool Enabled = false;
+		inline bool inverted = false;
+		inline bool ShowReal = false;
+		inline bool InvertOnShoot = false;
+		inline bool atTheTarget = false;
+		inline bool PitchDown = false;
+		inline bool JitterFake = false;
+		inline bool autoDirection = false;
+		inline float offset = 0.f;
+		inline float NetFake = 0.f;
+		
+		inline ButtonCode_t InvertKey = ButtonCode_t::KEY_T;
+		
+		namespace Jitter{
+			inline int Value = 0.f;
+			inline bool SyncWithLag = true;
 		}
 		namespace ManualAntiAim
 		{
@@ -740,25 +530,32 @@ namespace Settings
 			inline ButtonCode_t RightButton = ButtonCode_t::KEY_C;
 			inline ButtonCode_t LeftButton = ButtonCode_t::KEY_Z;
 		}
-        namespace Yaw
-        {
-            inline AntiAimRealType_Y typeReal = AntiAimRealType_Y::Static;
-            inline AntiAimFakeType_y typeFake = AntiAimFakeType_y::Static;
-        }
         namespace HeadEdge
         {
             inline bool enabled = false;
-            inline float distance = 25.0f;
         }
-        namespace LBYBreaker
-        {
-            inline bool enabled = false;
-            inline float offset = 180.0f;
-        }
+
 		namespace FakeDuck
 		{
 			inline bool enabled = false;
 			inline ButtonCode_t fakeDuckKey = ButtonCode_t::KEY_LCONTROL;
+		}
+
+		namespace FakeWalk{
+			inline bool enabled = false;
+			inline ButtonCode_t Key = ButtonCode_t::KEY_LSHIFT;
+			inline float Speed = 50;
+		}
+		namespace SlowWalk{
+			inline bool enabled = false;
+			inline ButtonCode_t Key = ButtonCode_t::KEY_LSHIFT;
+			inline float Speed = 50;
+		}
+
+		namespace lbyBreak {
+			inline bool Enabled = false;
+			inline bool notSend = false;
+			inline int angle = 90; // max is 180
 		}
 	}
 
@@ -833,6 +630,11 @@ namespace Settings
 			{
 				inline bool enabled = false;
 			}
+
+			namespace BulletBeam
+			{
+				inline bool enabled = false;
+			}
 			namespace Boxes
 			{
 				inline bool enabled = false;
@@ -889,6 +691,10 @@ namespace Settings
 				inline float size = 2.0f;
 			}
 			namespace BulletTracers
+			{
+				inline bool enabled = false;
+			}
+			namespace BulletBeam
 			{
 				inline bool enabled = false;
 			}
@@ -961,6 +767,12 @@ namespace Settings
 			{
 				inline bool enabled = false;
 			}
+
+			namespace BulletBeam
+			{
+				inline bool enabled = false;
+			}
+			
 			namespace Boxes
 			{
 				inline bool enabled = false;
@@ -1442,8 +1254,24 @@ namespace Settings
 	namespace FakeLag
 	{
 		inline bool enabled = false;
+		inline bool impulseLag = false;
 		inline int value = 9;
-		inline bool adaptive = false;
+		namespace OnShot{
+			inline bool Enable = false;
+			inline int Value = 5;
+		}
+
+		namespace AfterShot
+		{
+			inline bool Enable = false;
+			inline int Value = 5;
+		} 
+		
+		namespace InAir{
+			inline bool Enable = false;
+			inline int Value = 5;
+		}
+		
 	}
 
 	namespace AutoAccept

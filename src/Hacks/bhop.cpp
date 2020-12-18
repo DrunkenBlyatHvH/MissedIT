@@ -2,12 +2,10 @@
 
 #include "../settings.h"
 #include "../interfaces.h"
+#include "AntiAim/fakelag.h"
 
 void BHop::CreateMove(CUserCmd* cmd)
 {
-	if (!Settings::BHop::enabled)
-		return;
-
 	static bool bLastJumped = false;
 	static bool bShouldFake = false;
 	static int bActualHop = 0;
@@ -25,6 +23,7 @@ void BHop::CreateMove(CUserCmd* cmd)
 	{
 		bShouldFake = false;
 		cmd->buttons |= IN_JUMP;
+		FakeLag::ticks = Settings::FakeLag::value+1;
 	}
 	else if (cmd->buttons & IN_JUMP)
 	{

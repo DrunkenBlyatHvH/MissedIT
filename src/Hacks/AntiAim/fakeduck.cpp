@@ -4,8 +4,7 @@
 #include "../interfaces.h"
 #include "../settings.h"
 
-// Find it from nimbus there is no point to wast your time if that is all ready available
-static bool FirstDuck = false;
+
 void FakeDuck::CreateMove(CUserCmd *cmd)
 {
 	if (!Settings::AntiAim::FakeDuck::enabled)
@@ -15,29 +14,20 @@ void FakeDuck::CreateMove(CUserCmd *cmd)
     if (!localplayer || !localplayer->GetAlive())
 		return;
 
-	if (!inputSystem->IsButtonDown(Settings::AntiAim::FakeDuck::fakeDuckKey))
-	{
-		FirstDuck = false;
+	if (!inputSystem->IsButtonDown(Settings::AntiAim::FakeDuck::fakeDuckKey)){
+		FakeDuck::FakeDucking = false;
 		return;
-	}
-
-	if ( !localplayer->GetAnimState()->duckProgress && !FirstDuck )
-	{
-		cmd->buttons |= IN_DUCK;
-		CreateMove::sendPacket = true;
-	}
-	else 
-		FirstDuck = true;
+	}	
+		
 	
+	FakeDuck::FakeDucking = true;
 	if ( cmd->buttons&IN_ATTACK )
 	{
 		cmd->buttons &= ~IN_DUCK;
-		CreateMove::sendPacket = false;
+		CreateMove::sendPacket = true;
 	}
-	
-	CreateMove::sendPacket = false;
 
-	static bool counter = false;
+	static bool counter = true;
 	static int counters = 0;
 
 	if (counters == 9 )
@@ -51,12 +41,18 @@ void FakeDuck::CreateMove(CUserCmd *cmd)
 	if (counter)
 	{
 		cmd->buttons |= IN_BULLRUSH | IN_DUCK;
-		CreateMove::sendPacket = true;
+		if ( counters == 9)
+			CreateMove::sendPacket = true;
+		else 
+			CreateMove::sendPacket = false;
 	}
 	else
 	{
 		cmd->buttons &= ~IN_DUCK;
-		CreateMove::sendPacket = false;
+		if ( counters == 1)
+			CreateMove::sendPacket = true;
+		else 
+			CreateMove::sendPacket = false;
 	}		
 }
 

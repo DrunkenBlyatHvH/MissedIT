@@ -28,7 +28,7 @@ typedef IClientMode* (*GetClientModeFn) (void);
 typedef CGlowObjectManager* (*GlowObjectManagerFn) (void);
 typedef bool (*MsgFunc_ServerRankRevealAllFn) (void*);
 typedef void (*SendClanTagFn) (const char*, const char*);
-typedef void (*WriteUserCmdFn) (/*bf_write *buf,*/ const CUserCmd *to, const CUserCmd *from); // write user cmd fr function
+typedef void (*WriteUserCmdFn) (bf_write *buf, const CUserCmd *to, const CUserCmd *from); // write user cmd fr function
 typedef void (*SetLocalPlayerReadyFn) (const char*);
 typedef ILauncherMgr* (*ILauncherMgrCreateFn) (void);
 typedef void (*StartDrawingFn) (void*);
@@ -38,11 +38,6 @@ typedef bool (*LineGoesThroughSmokeFn) (Vector, Vector, int16_t);
 typedef void (*InitKeyValuesFn) (KeyValues*, const char*);
 typedef void (*LoadFromBufferFn) (KeyValues*, const char*, const char*, void*, const char*, void*);
 typedef ICommandLine* (*CommandLineFn) (void);
-typedef void (*RandomSeedFn)(int);
-typedef float (*RandomFloatFn)(float, float);
-typedef float (*RandomFloatExpFn)(float, float, float);
-typedef int (*RandomIntFn)(int, int);
-typedef float (*RandomGaussianFloatFn)(float, float);
 typedef bool (*SetNamedSkyBoxFn)(const char*);
 
 extern Vector lastRayStart;
@@ -1807,6 +1802,8 @@ const std::map<ItemDefinitionIndex, DefItem_t> ItemDefinitionIndexMap = {
 #define FL_FAKECLIENT			(1<<8)	// Fake client, simulated server side; don't send network messages to them
 // NON-PLAYER SPECIFIC (i.e., not used by GameMovement or the client .dll ) -- Can still be applied to players, though
 #define FL_INWATER				(1<<9)	// In water
+
+#define FL_ONFIRE				(1<<27)	
 
 #define CONTENTS_EMPTY			0		// No contents
 

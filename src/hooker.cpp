@@ -53,12 +53,6 @@ GetSequenceActivityFn GetSeqActivity;
 
 uintptr_t SetAbsOriginFnAddr;
 
-RandomSeedFn RandomSeed;
-RandomFloatFn RandomFloat;
-RandomFloatExpFn RandomFloatExp;
-RandomIntFn RandomInt;
-RandomGaussianFloatFn RandomGaussianFloat;
-
 SetNamedSkyBoxFn SetNamedSkyBox;
 
 std::vector<dlinfo_t> libraries;
@@ -328,20 +322,6 @@ void Hooker::FindLoadFromBuffer()
 }
 
 
-void Hooker::FindVstdlibFunctions()
-{
-	void* handle = dlopen(XORSTR("./bin/linux64/libvstdlib_client.so"), RTLD_NOLOAD | RTLD_NOW);
-
-	RandomSeed = reinterpret_cast<RandomSeedFn>(dlsym(handle, XORSTR("RandomSeed")));
-	RandomFloat = reinterpret_cast<RandomFloatFn>(dlsym(handle, XORSTR("RandomFloat")));
-	RandomFloatExp = reinterpret_cast<RandomFloatExpFn>(dlsym(handle, XORSTR("RandomFloatExp")));
-	RandomInt = reinterpret_cast<RandomIntFn>(dlsym(handle, XORSTR("RandomInt")));
-	RandomGaussianFloat = reinterpret_cast<RandomGaussianFloatFn>(dlsym(handle, XORSTR("RandomGaussianFloat")));
-
-	dlclose(handle);
-}
-
-
 void Hooker::FindOverridePostProcessingDisable()
 {
 	uintptr_t bool_address = PatternFinder::FindPatternInModule(XORSTR("/client_client.so"),
@@ -527,51 +507,50 @@ void Hooker::FindItemSystem()
 }
 
 void Hooker::FindWriteUserCmd(){
-	// 8B 46 04 				mov     eax, [esi+4]
-	// 89 44 24 08 				mov     [esp+8], eax
-	// 8B 43 04 				mov     eax, [ebx+4]
-	// C7 04 24 2F 32 00 01 	mov     dword ptr [esp]
-	// 89 44 24 04 				mov     [esp+4], eax
-	// E8 71 11 30 05 			call    ConDMsg
-	// E9  36 FD FF FF			jmp     loc_6EF7B2
 
-	// 8B 46 04 89 44 24 08 8B 43 04 C7 04 24 2F 32 00 01 89 44 24 04 E8 71 11 30 05 E9  36 FD FF FF
+	// Inside WriteUserCmdDelta Function > WriteUserCmd is calling
+	// look for string > WARNING! User command buffer overflow
+	// loc_96F07F:
+	// mov     rsi, rax
+	// mov     rdx, r14
+	// mov     rdi, rbx
+	// call    WriteUserCmdOriginal; Call Procedure // may be this one is writeusercmd hope for best
+	// cmp     byte ptr [rbx+14h], 0; Compare Two Operands
+	// mov     eax, 1
+	// jz      short loc_96F0B7;
 
-	// 57 72 69 
-	// 74 65 55 
-	// 73 65 
-	// 72 63 
-	// 6D 64 
-	// 3A 20 
-	// 66 72 
-	// 6F 6D 3D 25
-	// 64 20 74 
-	// 6F 3D 25 
-	// 64 0A 00
+	// 48 89 C6
+	// 4C 89 F2
+	// 48 89 DF
+	// E8 C3 D9 09 00 -> E8 00 00 00 00
+	// 80 7B 14 00
+	// B8 01 00 00 00
+	// 74 1F
 
 	uintptr_t func_address = PatternFinder::FindPatternInModule(XORSTR("/client_client.so"),
-																(unsigned char*) XORSTR("\x57\x00\x00"
-                                                                                        "\x74\x00\x00"
-																						"\x73\x00"
-																						"\x72\x00"
-																						"\x6D\x00"
-																						"\x3A\x00"
-																						"\x6F\x00\x00\x00"
-																						"\x64\x00\x00"
-																						"\x6F\x00\x00"
-																						"\x64\x00\x00"),
-																XORSTR("x??"
-                                                                        "x??"
-																		"x?"
-																		"x?"
-																		"x?"
-																		"x?"
-																		"x???"
-																		"x??"
-																		"x??"
-																		"x??" ));
+																(unsigned char*) XORSTR("\x48\x89\xC6"
+																						"\x4C\x89\xF2"
+																						"\x48\x89\xDF"
+																						"\xE8\x00\x00\x00\x00" 
+																						"\x80\x7B\x14\x00" 
+																						"\xB8\x01\x00\x00\x00" 
+																						"\x74\x1F"),
+																XORSTR(	"xxx"
+																		"xxx"
+																		"xxx"
+																		"x????"
+																		"xxxx"
+																		"xxxxx"
+																		"xx"));
 
-	WriteUserCmd = reinterpret_cast<WriteUserCmdFn>(func_address);																		   
+	func_address += 9;
+	func_address = GetAbsoluteAddress( func_address, 1, 5 );
 
-	// 'WriteUsercmd: from=%d to=%d',0Ah,0	
+	WriteUserCmd = reinterpret_cast<WriteUserCmdFn>(func_address);
+
+}
+
+void Hooker::FindClSendMove(){
+
+	
 }
